@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "1.0",
+  "title": "Smart Water Bottle Product Launch",
+  "runtimeSeconds": 30,
+  "aspectRatio": "9:16",
+  "brief": "Create a 30-second product launch video for a smart water bottle that tracks hydration, glows gently when it is time to drink, and syncs with a mobile app.",
+  "audience": "busy students and young professionals",
+  "tone": "clear, modern, energetic, trustworthy",
+  "requiredPipelineChecks": [
+    "Producer creates task graph and success criteria",
+    "Research identifies audience pain points without relying on public-figure news",
+    "Story Director writes concise voiceover and caption blocks",
+    "Asset Agent proposes original product visuals or user-upload/public-source fallback",
+    "Video Engineer maps each spoken line to visible screen events",
+    "Render exports a vertical final video package",
+    "Quality Gate checks captions, audio sync, visual evidence, and package completeness"
+  ],
+  "knownLimitations": [
+    "Full image generation requires an approved image provider or local Codex/ChatGPT imagegen capability.",
+    "If imagegen is unavailable, final packaging must block honestly instead of faking product hero visuals."
+  ]
+}

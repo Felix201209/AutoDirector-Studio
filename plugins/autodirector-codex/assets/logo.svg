@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 96" role="img" aria-label="AutoDirector">
+  <rect width="320" height="96" rx="24" fill="#101616"/>
+  <circle cx="48" cy="48" r="25" fill="#162221" stroke="#00D3C7" stroke-width="3"/>
+  <path d="M38 38h16a7 7 0 0 1 7 7v6a7 7 0 0 1-7 7H38a7 7 0 0 1-7-7v-6a7 7 0 0 1 7-7Z" fill="none" stroke="#B7FFF7" stroke-width="3"/>
+  <path d="m61 44 8-4.5v17L61 52" fill="none" stroke="#E8C36A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="92" y="56" font-family="Inter, -apple-system, BlinkMacSystemFont, sans-serif" font-size="28" font-weight="760" fill="#F2F7F4">AutoDirector</text>
+  <text x="94" y="76" font-family="Inter, -apple-system, BlinkMacSystemFont, sans-serif" font-size="12" font-weight="620" fill="#8FB5AD">Codex video team plugin</text>
+</svg>

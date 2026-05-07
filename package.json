@@ -1,0 +1,57 @@
+{
+  "name": "glitch-autodirector",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:client": "vite",
+    "dev:server": "node server/index.mjs",
+    "build": "tsc -b && vite build",
+    "build:public-ui": "tsc -b && VITE_AUTODIRECTOR_READONLY_DEMO=1 vite build --base /control-ui/ --outDir intro-site/control-ui --emptyOutDir && find intro-site/control-ui -name .DS_Store -delete",
+    "lint": "eslint .",
+    "test:unit": "node scripts/unit-tests.mjs",
+    "smoke": "npm run smoke:offline",
+    "smoke:offline": "node scripts/smoke-offline.mjs",
+    "smoke:codex": "node scripts/smoke.mjs",
+    "healthcheck": "npm run healthcheck:local",
+    "healthcheck:local": "node scripts/healthcheck-local.mjs",
+    "healthcheck:public": "node scripts/healthcheck.mjs",
+    "verify:quick": "npm run lint && npm run test:unit && npm run build && npm run smoke:offline && npm run healthcheck:local",
+    "verify:judge": "npm run verify:quick && npm run zip:code",
+    "verify:full": "npm run lint && npm run build && npm run build:public-ui && npm run smoke:codex && npm run healthcheck:public && npm run zip:code",
+    "verify:submission": "npm run verify:judge",
+    "ncm": "node scripts/ncm-to-mp3.mjs",
+    "zip:code": "node scripts/package-code.mjs",
+    "preview": "vite preview",
+    "start": "node server/index.mjs"
+  },
+  "dependencies": {
+    "@base-ui/react": "^1.4.1",
+    "@tailwindcss/vite": "^4.2.4",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.14.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "tailwind-merge": "^3.5.0",
+    "tailwindcss": "^4.2.4"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.12.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "eslint": "^10.2.1",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.5.0",
+    "typescript": "~6.0.2",
+    "typescript-eslint": "^8.58.2",
+    "vite": "^8.0.10"
+  }
+}

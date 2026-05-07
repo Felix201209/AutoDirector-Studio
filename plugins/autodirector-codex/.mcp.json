@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "autodirector": {
+      "type": "http",
+      "url": "http://127.0.0.1:8787/mcp",
+      "headers": {
+        "Authorization": "Bearer ${AUTODIRECTOR_MCP_TOKEN}"
+      },
+      "description": "Local AutoDirector control room. Start it with `npm run start` or `npm run dev` and connect the plugin with the token shown in Settings."
+    }
+  }
+}
