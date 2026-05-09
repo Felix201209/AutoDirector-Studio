@@ -1,11 +1,19 @@
 # Logs
 logs
 *.log
+*.zip
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+
+# Local audit screenshots and ad-hoc binary captures
+/*.png
+/*.jpg
+/*.jpeg
+/*.webp
+/*.gif
 
 node_modules
 dist
@@ -17,12 +25,18 @@ dist-ssr
 .playwright-mcp
 .tmp
 output
-autodirector-code.zip
 *.local
 
-# Local UI audit screenshots
-/agents-*.png
-/settings-*.png
+# Generated public media; keep only explicitly curated current delivery assets.
+intro-site/assets/musk-altman-agentteam-v[0-9]*
+!intro-site/assets/musk-altman-agentteam-v10.mp4
+!intro-site/assets/musk-altman-agentteam-v10-poster.jpg
+!intro-site/assets/musk-altman-agentteam-v10-package.zip
+!intro-site/assets/musk-altman-agentteam-v10-evidence/
+!intro-site/assets/musk-altman-agentteam-v10-evidence/**
+intro-site/assets/final.mp4
+intro-site/assets/final-package.zip
+intro-site/assets/autodirector-intro-edge-raw.mp4
 
 # Editor directories and files
 .vscode/*

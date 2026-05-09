@@ -3,6 +3,14 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "homepage": "https://autodirector.felixypz.me/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Felix201209/Glitch-AutoDirector.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Felix201209/Glitch-AutoDirector/issues"
+  },
   "engines": {
     "node": ">=22"
   },
@@ -13,6 +21,7 @@
     "build": "tsc -b && vite build",
     "build:public-ui": "tsc -b && VITE_AUTODIRECTOR_READONLY_DEMO=1 vite build --base /control-ui/ --outDir intro-site/control-ui --emptyOutDir && find intro-site/control-ui -name .DS_Store -delete",
     "lint": "eslint .",
+    "test": "npm run test:unit",
     "test:unit": "node scripts/unit-tests.mjs",
     "smoke": "npm run smoke:offline",
     "smoke:offline": "node scripts/smoke-offline.mjs",
@@ -24,6 +33,7 @@
     "verify:judge": "npm run verify:quick && npm run zip:code",
     "verify:full": "npm run lint && npm run build && npm run build:public-ui && npm run smoke:codex && npm run healthcheck:public && npm run zip:code",
     "verify:submission": "npm run verify:judge",
+    "package:v10-existing": "node scripts/package-existing-musk-altman-agentteam-v10.mjs",
     "ncm": "node scripts/ncm-to-mp3.mjs",
     "zip:code": "node scripts/package-code.mjs",
     "preview": "vite preview",

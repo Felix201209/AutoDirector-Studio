@@ -1,0 +1,61 @@
+{
+  "schemaVersion": "1.0",
+  "title": "Smart Water Bottle Generalization Evidence Plan",
+  "purpose": "Show how the same AutoDirector Agent pipeline applies to a neutral product-launch brief without public-figure news assumptions.",
+  "input": "examples/smart-water-bottle/brief.json",
+  "expectedArtifacts": [
+    {
+      "agentId": "producer",
+      "artifact": "task_graph.json",
+      "mustContain": ["successCriteria", "runtimeSeconds", "handoffOrder"]
+    },
+    {
+      "agentId": "research",
+      "artifact": "research_pack.json",
+      "mustContain": ["audiencePainPoints", "marketContext", "sourceRisks"]
+    },
+    {
+      "agentId": "director",
+      "artifact": "script.md",
+      "mustContain": ["voiceover", "captionBlocks", "shotlist"]
+    },
+    {
+      "agentId": "asset",
+      "artifact": "asset_manifest.json",
+      "mustContain": ["productHeroVisual", "imageProvider", "fallbackPlan"]
+    },
+    {
+      "agentId": "programmer",
+      "artifact": "source-project.json",
+      "mustContain": ["runtime", "sceneMap", "assetReferences"]
+    },
+    {
+      "agentId": "render",
+      "artifact": "render_manifest.json",
+      "mustContain": ["finalVideo", "packageZip", "mediaProbe"]
+    },
+    {
+      "agentId": "quality",
+      "artifact": "quality_report.json",
+      "mustContain": ["captionSafety", "audioSync", "visualEvidence", "packageCompleteness"]
+    }
+  ],
+  "qualityGate": {
+    "allowPackageWhen": [
+      "final video exists and media probe matches 9:16 target",
+      "asset manifest contains either generated product visuals or explicit user-upload/public-source assets",
+      "voice-screen map covers every narration line",
+      "package includes source project, manifest, script, citations or source notes, render log, and quality report"
+    ],
+    "blockPackageWhen": [
+      "image provider is unavailable and no uploaded/public product visual exists",
+      "render falls back to pure text cards without visual evidence",
+      "caption blocks overlap essential UI or product visuals",
+      "artifact chain skips any upstream Agent handoff"
+    ]
+  },
+  "notes": [
+    "This is intentionally a source-level review fixture, not a fake completed video.",
+    "The hosted v10 Musk/Altman delivery remains the media proof; this fixture proves the same workflow is not topic-locked."
+  ]
+}

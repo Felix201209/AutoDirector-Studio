@@ -1,19 +1,21 @@
 # AutoDirector
 
-AutoDirector is a local-first multi-agent video production control room built for the EasyClaw AI Agent Hackathon.
+AutoDirector is a local-first multi-agent video production control room for the EasyClaw AI Agent Hackathon.
 
-It turns a short video brief into a traceable production pipeline: Producer, Research, Director, Asset, Video Engineer, Render, and Quality Gate agents hand off structured artifacts until a packaged video delivery is ready.
+It turns a short video brief into a traceable production pipeline: Producer, Research, Story Director, Asset, Video Engineer, Render, and Quality Gate agents hand off structured artifacts until a packaged video delivery is ready. A Recorder sidecar captures run memory and reusable skill drafts.
+
+Review-use license: this repository is public for hackathon evaluation, but it is not an open-source template. See `LICENSE` before copying, redistributing, or reusing it.
 
 ## What To Review
 
 - `src/` - React control room UI.
-- `server/` - local orchestration server, artifact schema, security checks, OAuth/MCP endpoints, and agent runtime glue.
+- `server/` - local orchestration server, artifact schema, path safety, OAuth/MCP endpoints, model adapters, and agent runtime glue.
 - `plugins/autodirector-codex/` - portable Codex plugin skills for the AutoDirector agent team.
 - `docs/agent-skills/` - role prompts and quality rules used by the production agents.
-- `examples/` - sample brief for a quick dry run.
-- `JUDGE_GUIDE.md` - concise walkthrough for reviewers.
+- `examples/` - a neutral sample brief for dry-run evidence.
+- `JUDGE_GUIDE.md` - the fastest reviewer walkthrough.
 
-This repository intentionally excludes the public showcase website, generated videos, screenshots, build output, logs, private runtime state, and `node_modules`.
+This public repository intentionally excludes the showcase website, generated videos, screenshots, build output, logs, private runtime state, and `node_modules`.
 
 ## Run Locally
 
@@ -58,6 +60,10 @@ Full public/native verification is environment-dependent:
 ```bash
 npm run verify:full
 ```
+
+## Model Routes
+
+Codex / ChatGPT OAuth is the default local route. OpenAI-compatible, DeepSeek, Qwen, Anthropic, and custom endpoint text adapters are wired through local environment variables documented in `.env.example`; the UI does not store API keys.
 
 ## Public Demo
 

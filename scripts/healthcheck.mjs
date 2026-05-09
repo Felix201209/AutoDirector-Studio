@@ -1,6 +1,6 @@
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { homedir, tmpdir } from "node:os"
+import { dirname, join, relative } from "node:path"
 import { spawnSync } from "node:child_process"
 
 const publicUrl = process.env.AUTODIRECTOR_PUBLIC_URL ?? "https://autodirector.felixypz.me"
@@ -67,10 +67,7 @@ function collectTextFiles(root, files = []) {
   }
   for (const entry of readdirSync(root)) {
     const path = join(root, entry)
-    if (
-      /(^|\/)(node_modules|dist|\.tmp|\.autodirector|control-ui|assets)$/.test(path) ||
-      path.endsWith(join("intro-site", "delivery.html"))
-    ) {
+    if (/(^|\/)(node_modules|dist|\.tmp|\.autodirector|control-ui|assets)$/.test(path)) {
       continue
     }
     collectTextFiles(path, files)
@@ -78,14 +75,17 @@ function collectTextFiles(root, files = []) {
   return files
 }
 
-const localUsersPrefix = ["/", "Users", "/"].join("")
-const localUserPath = [localUsersPrefix, "felix"].join("")
-const localEmailUser = ["f120", "927"].join("")
-const outlookDomainNeedle = ["@", "outlook"].join("")
-const secretNeedles = [localUserPath, localUsersPrefix, localEmailUser, outlookDomainNeedle]
-const staticCssVersion = "styles.css?v=20260504ambientfit"
-const nonDeliveryStaticPages = ["index.html", "team.html", "pipeline.html", "details.html", "control-room.html"]
-const staticNavPages = ["index.html", "team.html", "pipeline.html", "details.html"]
+const localHomeDir = homedir()
+const localHomeParent = dirname(localHomeDir)
+const secretNeedles = [...new Set([localHomeDir, localHomeParent].filter((value) => value && value !== "/" && value.length > 5))]
+const secretPatterns = [
+  /[A-Z0-9._%+-]+@(gmail|outlook|hotmail|icloud|qq|163|126)\.[A-Z]{2,}/i,
+  /(?:sk|ghp|gho|ghu|ghs|pat)_[A-Za-z0-9_=-]{16,}/i,
+  /(?<![A-Za-z0-9])sk-(?:proj-)?[A-Za-z0-9_]{20,}/i,
+]
+const staticCssVersion = "styles.css?v=20260509winfit4"
+const staticPages = ["index.html", "team.html", "pipeline.html", "details.html", "delivery.html", "control-room.html"]
+const staticNavPages = ["index.html", "team.html", "pipeline.html", "details.html", "delivery.html"]
 const localizedStaticNavLabels = ["Agent 团队", "生产线", "控制台", "细节", "交付"]
 const controlUiDirectViewLinks = [
   "control-ui/?view=orchestrate",
@@ -101,13 +101,25 @@ const staleStaticEnglishPatterns = [
   />Delivery</,
   /Read-only Control UI/,
 ]
+const stalePublicAgentPatterns = [
+  /7-Agent/,
+  /8 agents/,
+]
 const controlUiPolishNeedles = [
   "持久在线制作团队",
   "个 Agent",
   "视频交付室",
-  "账号 / Agent / 素材",
-  "Agent 接入方式",
-  "Musk vs Altman v10",
+  "当前设置概览",
+  "接入配置",
+  "Agent Host",
+  "模型供应商",
+  "模型来源",
+  "Claude / Anthropic API",
+  "DeepSeek API",
+  "Qwen API",
+  "OpenAI-compatible Endpoint",
+  "CUSTOM_MODEL_BASE_URL",
+  "Public delivery v10",
   "流水线时间轴",
   "工具控制台",
 ]
@@ -185,9 +197,19 @@ function assertControlUiPolish(body, label) {
   assertNoPatterns(body, label, staleControlUiCopyPatterns)
 }
 
-function assertControlUiDirectEntries(html, label) {
+function assertControlUiViewManifest(manifest, label) {
+  const views = manifest?.readOnlyControlUiViews
+  assert(Array.isArray(views), `${label} should expose readOnlyControlUiViews`)
   for (const href of controlUiDirectViewLinks) {
-    assert(html.includes(`href="${href}"`), `${label} should expose direct Control UI entry ${href}`)
+    assert(views.includes(href), `${label} should list Control UI view ${href}`)
+  }
+}
+
+async function assertPublicControlUiViewsReachable(label) {
+  for (const href of controlUiDirectViewLinks) {
+    const html = await fetchText(new URL(href, `${publicUrl}/`).toString())
+    assert(html.includes("AutoDirector Control Room"), `${label} should serve Control UI for ${href}`)
+    assert(!html.includes("/api/"), `${label} ${href} should stay static and not link to backend API`)
   }
 }
 
@@ -198,6 +220,12 @@ function assertHomeDemoPresent(html, label) {
   assert(!html.includes("只读 Web UI Demo"), `${label} should not show the removed fake Web UI demo`)
   assert(!html.includes("公网 demo 禁止输入"), `${label} should not include removed demo-only copy`)
   assert(html.includes("control-ui/"), `${label} should link to the 1:1 read-only Control UI`)
+  assert(html.includes("多 Agent") && html.includes("视频制作团队"), `${label} should open with the product-specific multi-agent headline`)
+  assert(html.includes("持久岗位"), `${label} should expose the agent-team size in the first viewport`)
+  assert(html.includes("31s"), `${label} should expose the public film duration proof metric`)
+  assert(html.includes("157"), `${label} should expose the source package proof metric`)
+  assert(html.includes("无后端 API"), `${label} should expose the static public-site proof metric`)
+  assertNoPatterns(html, label, stalePublicAgentPatterns)
 }
 
 function assertZipClean(zipPath, requiredFiles = []) {
@@ -218,14 +246,32 @@ function assertZipClean(zipPath, requiredFiles = []) {
     if (scan.status === 0) throw new Error(`${zipPath} should not expose ${secret}:\n${scan.stdout}`)
     if (scan.status !== 1) throw new Error(scan.stderr || scan.stdout || `zipgrep failed while scanning ${zipPath}`)
   }
+  const scanDir = mkdtempSync(join(tmpdir(), "autodirector-zip-secret-scan-"))
+  try {
+    const extract = spawnSync("unzip", ["-qq", zipPath, "-d", scanDir], { encoding: "utf8" })
+    if (extract.status !== 0) throw new Error(extract.stderr || extract.stdout || `unzip failed while scanning ${zipPath}`)
+    for (const textFile of collectTextFiles(scanDir)) {
+      const body = readFileSync(textFile, "utf8")
+      const label = `${zipPath}:${relative(scanDir, textFile)}`
+      assertNoPatterns(body, label, secretPatterns)
+      for (const secret of secretNeedles) {
+        assert(!body.includes(secret), `${label} should not expose ${secret}`)
+      }
+    }
+  } finally {
+    rmSync(scanDir, { recursive: true, force: true })
+  }
 }
 
 const localHome = readFileSync(join("intro-site", "index.html"), "utf8")
 assert(localHome.includes("AutoDirector"), "local static homepage is missing AutoDirector copy")
 assertHomeDemoPresent(localHome, "local static homepage")
-assertControlUiDirectEntries(localHome, "local homepage")
+const localManifest = JSON.parse(readFileSync(join("intro-site", "demo-manifest.json"), "utf8"))
+assertControlUiViewManifest(localManifest, "local demo manifest")
+assert(Array.isArray(localManifest.sourceZip?.verificationCommands), "local demo manifest should expose neutral verification commands")
+assert(!("judgeCommands" in (localManifest.sourceZip ?? {})), "local demo manifest should not expose judgeCommands wording")
 
-for (const page of nonDeliveryStaticPages) {
+for (const page of staticPages) {
   const html = readFileSync(join("intro-site", page), "utf8")
   assert(html.includes(staticCssVersion), `local ${page} should load ${staticCssVersion}`)
   assertNoPatterns(html, `local ${page}`, legacyReviewPatterns)
@@ -246,9 +292,14 @@ for (const textFile of [
   ...collectTextFiles("plugins/autodirector-codex"),
   ...collectTextFiles("server"),
   ...collectTextFiles("src"),
-  ...collectTextFiles("intro-site"),
+  ...collectTextFiles("intro-site").filter((file) => file !== join("intro-site", "index.html")),
 ]) {
-  assertNoPatterns(readFileSync(textFile, "utf8"), textFile, legacyReviewPatterns)
+  const body = readFileSync(textFile, "utf8")
+  assertNoPatterns(body, textFile, legacyReviewPatterns)
+  assertNoPatterns(body, textFile, secretPatterns)
+  for (const secret of secretNeedles) {
+    assert(!body.includes(secret), `${textFile} should not expose ${secret}`)
+  }
 }
 
 assertControlUiPolish(readFileSync(join("src", "App.tsx"), "utf8"), "src/App.tsx")
@@ -261,17 +312,16 @@ assert(!publicHome.includes("autodirector-source.zip"), "public homepage should 
 assert(publicHome.includes(staticCssVersion), `public homepage should load ${staticCssVersion}`)
 assertNoPatterns(publicHome, "public homepage", legacyReviewPatterns)
 assertLocalizedStaticNav(publicHome, "public homepage")
-assertControlUiDirectEntries(publicHome, "public homepage")
+await assertPublicControlUiViewsReachable("public read-only Control UI")
 
 for (const page of ["team.html", "pipeline.html", "details.html", "delivery.html"]) {
   const html = await fetchText(`${publicUrl}/${page}`)
   assert(html.includes("AutoDirector"), `public ${page} is missing AutoDirector copy`)
   assert(!html.includes("/api/"), `public ${page} should not link to backend API`)
-  if (page !== "delivery.html") {
-    assert(html.includes(staticCssVersion), `public ${page} should load ${staticCssVersion}`)
-    assertNoPatterns(html, `public ${page}`, legacyReviewPatterns)
-    assertLocalizedStaticNav(html, `public ${page}`)
-  }
+  assertNoPatterns(html, `public ${page}`, stalePublicAgentPatterns)
+  assert(html.includes(staticCssVersion), `public ${page} should load ${staticCssVersion}`)
+  assertNoPatterns(html, `public ${page}`, legacyReviewPatterns)
+  assertLocalizedStaticNav(html, `public ${page}`)
 }
 
 const publicControlUi = await fetchText(`${publicUrl}/control-ui/`)
@@ -311,6 +361,16 @@ for (const blocked of ["autodirector-source.zip", "autodirector-code.zip"]) {
 const publicFilmName = "musk-altman-agentteam-v10.mp4"
 const publicPackageName = "musk-altman-agentteam-v10-package.zip"
 const publicPackageHref = `assets/${publicPackageName}`
+const stalePublicMediaPatterns = [
+  /^musk-altman-agentteam-v[679]/,
+  /^autodirector-intro-edge-raw\.mp4$/,
+  /^autodirector-intro\.mp4$/,
+  /^final\.(mp4|zip)$/,
+  /^final-package\.zip$/,
+]
+for (const entry of readdirSync(join("intro-site", "assets"))) {
+  assert(!stalePublicMediaPatterns.some((pattern) => pattern.test(entry)), `intro-site/assets should not include stale media ${entry}`)
+}
 const deliveryPage = await fetchText(`${publicUrl}/delivery.html`)
 assert(deliveryPage.includes(`assets/${publicFilmName}`), "public delivery page does not point at the current v10 film")
 assert(deliveryPage.includes(publicPackageHref), "public delivery page does not point at the v10 package URL")
@@ -321,6 +381,25 @@ const finalZip = await fetchHead(publicPackageUrl, "application/zip")
 const zipPath = join("intro-site", "assets", publicPackageName)
 assert(existsSync(zipPath), `${zipPath} does not exist`)
 const requiredPackageFiles = [
+  "judging_readme.md",
+  "source_project.zip",
+  "asset_manifest.json",
+  "runtime_plan.json",
+  "caption_styleguide.json",
+  "motion_board.json",
+  "sound_plan.json",
+  "imagegen_prompt_pack.json",
+  "research_pack.json",
+  "topic_scorecard.json",
+  "agent_interactions.md",
+  "script.md",
+  "shotlist.json",
+  "citations.md",
+  "quality_report.md",
+  "run_log.jsonl",
+  "recorder_log.jsonl",
+  "recorder_summary.md",
+  "skill_suggestions.json",
   "hash-report.json",
   "source-project.json",
   "quality_report.json",

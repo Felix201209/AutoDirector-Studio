@@ -1,16 +1,25 @@
-# AutoDirector Judge Guide
+# AutoDirector Review Guide
 
 AutoDirector is built for the EasyClaw AI Agent Hackathon. The public website is a read-only showcase; the submitted source ZIP is the verification target.
 
 ## 3-minute path
 
 1. Open the public showcase: https://autodirector.felixypz.me/
-2. Watch the 31s delivery video on the hosted delivery page.
-3. Open the read-only Control UI at `/control-ui/`.
-4. Inspect the Agent pipeline pages on the hosted showcase.
-5. Use the source ZIP to review the local server, React UI, Agent skills, packaging scripts, and verification commands.
+2. Read the system summary on the homepage: multi-Agent team, real business scenario, runnable code, and traceable delivery.
+3. Open `team.html` and `pipeline.html`; the Handoff Trail shows each Agent's input, output, and artifact.
+4. Watch the 31s delivery video on the hosted delivery page.
+5. Open the read-only Control UI at `/control-ui/`.
+6. Use the source ZIP to review the local server, React UI, Agent skills, packaging scripts, and verification commands.
 
-For a non-news, non-public-figure sample prompt, inspect `examples/smart-water-bottle/brief.json`.
+For a non-news, non-public-figure sample, inspect `examples/smart-water-bottle/brief.json` and its `evidence-plan.json`.
+
+## Review Checklist
+
+- Digital team fit: 7 persistent Agents with clear roles, handoffs, and quality gates, plus Recorder evidence for reuse.
+- Business scenario: short-video production from user brief to packaged delivery.
+- Runnable product: local React UI, Node server, MCP/OAuth routes, Codex Native orchestration, and offline smoke tests.
+- Evidence quality: final video plus `source-project.json`, `voice_screen_map.json`, `quality_report.json`, `sync_quality.json`, and render script.
+- Alternate brief: the source ZIP includes `examples/smart-water-bottle/brief.json` plus `evidence-plan.json` to show the same pipeline on a product-launch scenario without fake rendered media.
 
 ## Run locally
 
@@ -34,7 +43,7 @@ This path does not require Codex CLI, ChatGPT login, public network access, ffmp
 npm run verify:quick
 ```
 
-For a judge-friendly source ZIP check:
+For a portable source ZIP check:
 
 ```bash
 npm run verify:judge
@@ -42,7 +51,7 @@ npm run verify:judge
 
 ## Full native Agent run
 
-Full mode is optional and environment-dependent. It can use the local Codex/ChatGPT login and may consume model or image-generation quota.
+Full mode is optional and environment-dependent. It can use the local Codex/ChatGPT login and may consume model or image-generation quota. The Settings UI also documents adapter routes for ChatGPT/OpenAI API, Claude/Anthropic API, DeepSeek API, Qwen API, and OpenAI-compatible custom endpoints; API keys are expected in local environment variables, not stored in the UI.
 
 Requires:
 
@@ -67,11 +76,13 @@ The source ZIP contains:
 - MCP/OAuth route implementation
 - Codex Native Agent orchestration
 - Agent skills and documentation
+- Public showcase HTML/CSS/JS source and `intro-site/demo-manifest.json`
 - Offline smoke / healthcheck scripts
 - Source package builder
-- General example brief at `examples/smart-water-bottle/brief.json`
+- Existing-v10 package wrapper (`npm run package:v10-existing`)
+- General example brief and evidence plan under `examples/smart-water-bottle/`
 
-It intentionally excludes the public showcase website HTML, videos, audio, screenshots, generated delivery packages, local state, dependency folders, and machine-specific caches. The root `index.html` is retained because it is required by the runnable Vite app.
+It intentionally excludes public videos, audio, screenshots, generated delivery packages, built public Control UI JS/CSS assets, local state, dependency folders, and machine-specific caches. The root `index.html` is retained because it is required by the runnable Vite app.
 
 ## Known limitations
 

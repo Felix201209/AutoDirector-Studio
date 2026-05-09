@@ -45,6 +45,14 @@ function normalizeNativeEffort(value) {
   return "medium"
 }
 
+function resolveNativeRuntimeModel(model) {
+  const value = String(model ?? "").trim()
+  if (!value || value.startsWith("codex-") || value === "local-tool-runner" || value === "deterministic-recorder") {
+    return process.env.AUTODIRECTOR_CODEX_MODEL || null
+  }
+  return value
+}
+
 function parseJsonFromText(text) {
   const raw = String(text ?? "").trim()
   if (!raw) return null
@@ -118,7 +126,7 @@ function workerDeveloperInstructions(context, run, task, worker) {
           "- 真实新闻人物/事件素材：优先用 web/tool_search 找可引用的真实公开来源，并记录 URL、用途、风险。",
           "- 概念导图、结构图、解释图、风格化视觉：必须调用原生 image_generation/imagegen 生成 PNG。",
           "- 普通 20-30s 视频至少需要 5 个彼此不同且强相关的主视觉或真实素材；不能只给 1-2 张图，其余交给 HTML 卡片。",
-          "- 如果主题是 Musk / Altman / OpenAI 等真实人物冲突，不要 imagegen 假肖像；用真实可引用图片做证据，用 imagegen 做结构图/时间线/关系图。",
+          "- 如果主题是真实人物或机构冲突，不要 imagegen 假肖像；用真实可引用图片做证据，用 imagegen 做结构图/时间线/关系图。",
           "- 生成图必须落在 AUTODIRECTOR_IMAGEGEN_DIR 或 prompt 指定目录，并在 content.imagegen_assets 里列文件名。",
         ].join("\n")
       : "",
@@ -249,11 +257,12 @@ export function createCodexNativeAgentRuntime(context) {
   async function getOrCreateProducerThread() {
     const native = ensureNativeState()
     const policy = state().settings.modelPolicy?.producer ?? context.agentModelPolicy.producer
-    const model = String(policy.model || "gpt-5.5")
+    const model = String(policy.model || "codex-default")
+    const runtimeModel = resolveNativeRuntimeModel(model)
     const effort = normalizeNativeEffort(policy.thinkingLevel)
     if (native.producerThreadId) {
       try {
-        await resumeThread(native.producerThreadId, { model, config: { model_reasoning_effort: effort } })
+        await resumeThread(native.producerThreadId, { ...(runtimeModel ? { model: runtimeModel } : {}), config: { model_reasoning_effort: effort } })
         return { threadId: native.producerThreadId, model, effort, created: false }
       } catch {
         native.producerThreadId = null
@@ -261,7 +270,7 @@ export function createCodexNativeAgentRuntime(context) {
     }
 
     const { threadId } = await startThread({
-      model,
+      ...(runtimeModel ? { model: runtimeModel } : {}),
       effort,
       baseInstructions: nativeBaseInstructions(),
       developerInstructions: producerDeveloperInstructions(context),
@@ -275,14 +284,15 @@ export function createCodexNativeAgentRuntime(context) {
   async function getOrCreateAgentThread(run, task, worker) {
     run.codexThreads = run.codexThreads ?? {}
     const policy = state().settings.modelPolicy?.[worker.id] ?? context.agentModelPolicy[worker.id] ?? context.agentModelPolicy.producer
-    const model = String(policy.model ?? worker.model ?? "gpt-5.5").startsWith("gpt") ? String(policy.model ?? worker.model) : "gpt-5.5"
+    const model = String(policy.model ?? worker.model ?? "codex-default")
+    const runtimeModel = resolveNativeRuntimeModel(model)
     const effort = normalizeNativeEffort(policy.thinkingLevel ?? worker.thinkingLevel)
     const existing = run.codexThreads[worker.id]
     if (existing?.workspaceDir && existing.workspaceDir !== codexCwd()) {
       delete run.codexThreads[worker.id]
     } else if (existing?.threadId) {
       try {
-        await resumeThread(existing.threadId, { model, config: { model_reasoning_effort: effort } })
+        await resumeThread(existing.threadId, { ...(runtimeModel ? { model: runtimeModel } : {}), config: { model_reasoning_effort: effort } })
         return { threadId: existing.threadId, model, effort, created: false }
       } catch {
         delete run.codexThreads[worker.id]
@@ -290,7 +300,7 @@ export function createCodexNativeAgentRuntime(context) {
     }
 
     const { threadId } = await startThread({
-      model,
+      ...(runtimeModel ? { model: runtimeModel } : {}),
       effort,
       baseInstructions: nativeBaseInstructions(),
       developerInstructions: workerDeveloperInstructions(context, run, task, worker),

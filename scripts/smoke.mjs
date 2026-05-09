@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { spawn } from "node:child_process"
@@ -9,6 +9,8 @@ const root = fileURLToPath(new URL("..", import.meta.url))
 const port = Number(process.env.SMOKE_PORT ?? 8790)
 const baseUrl = `http://127.0.0.1:${port}`
 const stateDir = mkdtempSync(join(tmpdir(), "autodirector-smoke-"))
+const createdOutputDirs = []
+const tinyPng = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAwUBAWjz5xUAAAAASUVORK5CYII=", "base64")
 
 function fail(message) {
   console.error(`Smoke failed: ${message}`)
@@ -56,6 +58,94 @@ async function postWithAuth(path, body, token) {
   })
   if (!response.ok) throw new Error(`${path} returned ${response.status}`)
   return response.json()
+}
+
+async function getRun(runId) {
+  const response = await fetch(`${baseUrl}/api/runs/${runId}`)
+  if (!response.ok) throw new Error(`/api/runs/${runId} returned ${response.status}`)
+  return response.json()
+}
+
+function writeSmokeImageAssets(runId, count = 8) {
+  const assetDir = join(root, "output", "imagegen", runId)
+  mkdirSync(assetDir, { recursive: true })
+  createdOutputDirs.push(assetDir)
+  for (let index = 1; index <= count; index += 1) {
+    writeFileSync(join(assetDir, `scene-${index}.png`), tinyPng)
+  }
+  return assetDir
+}
+
+async function submitExpectedArtifact(run, expected) {
+  const task = run.tasks.find((item) => item.status === "working")
+  if (!task) throw new Error(`full-chain smoke missing working task before ${expected.stepId}`)
+  if (task.stepId !== expected.stepId || task.agentId !== expected.agentId || task.outputId !== expected.outputId) {
+    throw new Error(`full-chain smoke expected ${expected.stepId}/${expected.agentId}/${expected.outputId}, got ${task.stepId}/${task.agentId}/${task.outputId}`)
+  }
+  const result = await post(`/api/runs/${run.id}/agent-artifact`, {
+    taskId: task.id,
+    agentId: task.agentId,
+    artifact: {
+      title: `${task.label} smoke artifact`,
+      type: expected.type ?? "json",
+      summary: `${task.agentId} submitted ${task.outputId} through the real artifact endpoint.`,
+      content: {
+        status: "passed",
+        outputId: task.outputId,
+        stage: task.stepId,
+        upstreamArtifactIds: task.inputArtifactIds,
+        smoke: "full artifact chain",
+      },
+      checks: ["schema valid", "handoff recorded", "stage accepted"],
+    },
+  })
+  return result.activeRun
+}
+
+async function assertFullArtifactChainPackage() {
+  const created = await post("/api/generate-one-click", {
+    brief: "Smoke test: smart water bottle full artifact chain",
+  })
+  let run = created.activeRun
+  if (!run?.id) throw new Error("full-chain smoke run was not created")
+  if (run.package) throw new Error("full-chain smoke should not create a package before artifacts")
+
+  const assetDir = writeSmokeImageAssets(run.id)
+  const registered = await post(`/api/runs/${run.id}/register-image-assets`, { assetDir })
+  run = registered.activeRun
+  if (!run.imageAssetDir?.endsWith(`/output/imagegen/${run.id}`)) throw new Error("full-chain smoke image assets were not registered")
+
+  const chain = [
+    ["brief", "producer", "task_graph"],
+    ["research", "research", "research_pack"],
+    ["script", "director", "script"],
+    ["director", "director", "shotlist"],
+    ["asset", "asset", "asset_manifest"],
+    ["runtime", "programmer", "runtime_plan"],
+    ["programmer", "programmer", "source_project"],
+    ["render", "render", "render_report"],
+    ["quality", "quality", "quality_report"],
+  ].map(([stepId, agentId, outputId]) => ({ stepId, agentId, outputId }))
+
+  for (const expected of chain) {
+    run = await submitExpectedArtifact(run, expected)
+  }
+
+  const finalRun = await getRun(run.id)
+  if (!["ready_to_package", "final"].includes(finalRun.status)) throw new Error(`full-chain smoke final status should be complete, got ${finalRun.status}`)
+  if (finalRun.completedSteps !== chain.length) throw new Error(`full-chain smoke completed ${finalRun.completedSteps}/${chain.length} steps`)
+  if (finalRun.package?.status !== "ready") throw new Error(`full-chain smoke package should be ready, got ${finalRun.package?.status}`)
+  if (!finalRun.package.finalVideoUrl?.endsWith("/final.mp4")) throw new Error("full-chain smoke package missing final.mp4 URL")
+  for (const required of ["judging_readme.md", "source_project.zip", "asset_manifest.json", "citations.md", "quality_report.md", "run_log.jsonl"]) {
+    if (!finalRun.package.files?.includes(required)) throw new Error(`full-chain smoke package missing ${required}`)
+  }
+  for (const required of ["recorder_log.jsonl", "recorder_summary.md", "skill_suggestions.json"]) {
+    if (!finalRun.package.files?.includes(required)) throw new Error(`full-chain smoke recorder package missing ${required}`)
+  }
+  if (!finalRun.package.files?.some((file) => file.startsWith("generated_skills/") && file.endsWith("SKILL.md"))) {
+    throw new Error("full-chain smoke package missing generated Recorder skills")
+  }
+  return finalRun
 }
 
 function sha256Base64Url(value) {
@@ -215,6 +305,7 @@ async function main() {
       layoutMode: "simple",
       executionMode: "oauth_agents",
       agentHost: "codex_plugin",
+      modelProvider: "openai_compatible",
     })
 
     const oneClick = await post("/api/generate-one-click", {
@@ -270,6 +361,7 @@ async function main() {
     if (!toolNames.includes("autodirector_generate_one_click")) throw new Error("MCP one-click tool missing")
     if (!toolNames.includes("autodirector_get_agent_task")) throw new Error("MCP get-agent-task tool missing")
     if (!toolNames.includes("autodirector_submit_agent_artifact")) throw new Error("MCP submit-agent-artifact tool missing")
+    if (!toolNames.includes("autodirector_get_recorder_memory")) throw new Error("MCP recorder memory tool missing")
 
     const mcpRun = await postWithAuth(
       "/mcp",
@@ -277,6 +369,8 @@ async function main() {
       accessToken
     )
     if (!mcpRun.result?.content?.[0]?.text?.includes("Run created")) throw new Error("authenticated MCP tool call failed")
+
+    const chainRun = await assertFullArtifactChainPackage()
 
     await patch("/api/settings", { executionMode: "legacy_template" })
     const blockedPackage = await post("/api/generate-one-click", {
@@ -288,10 +382,12 @@ async function main() {
     if (!blockedRun.package.blockedReason?.some((reason) => reason.includes("OAuth imagegen"))) throw new Error("blocked package did not explain missing OAuth imagegen assets")
 
     console.log(`Smoke passed: ${run.id}`)
+    console.log(`Full artifact-chain smoke passed: ${chainRun.id}`)
     console.log("Real OAuth Agent kernel waits for artifact submission before advancing.")
     console.log("Quality gate blocks fake final.mp4 when OAuth imagegen assets are missing.")
   } finally {
     server.kill()
+    for (const dir of createdOutputDirs) rmSync(dir, { recursive: true, force: true })
     rmSync(stateDir, { recursive: true, force: true })
     if (process.exitCode && stderr) console.error(stderr)
   }

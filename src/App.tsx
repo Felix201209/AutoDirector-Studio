@@ -28,7 +28,6 @@ import { Textarea } from "@/components/ui/textarea"
 import {
   agentSkills,
   artifacts as seedArtifacts,
-  connectionOptions,
   packageItems,
   runtimePacks,
   timeline,
@@ -40,6 +39,7 @@ import { cn } from "@/lib/utils"
 
 type ProviderId = "openai_codex_oauth"
 type AgentHost = "codex_native" | "codex_plugin" | "openai_api" | "claude_code" | "custom_mcp"
+type ModelProvider = "codex_oauth" | "openai_api" | "anthropic_api" | "deepseek_api" | "qwen_api" | "openai_compatible" | "custom_mcp"
 type VisualProvider = "codex_imagegen" | "openai_image_api" | "user_upload" | "public_source_only"
 type LayoutMode = "simple" | "power"
 type AuthStatus = "disconnected" | "connected"
@@ -65,6 +65,7 @@ type AppSettings = {
   layoutMode: LayoutMode
   executionMode: ExecutionMode
   agentHost?: AgentHost
+  modelProvider?: ModelProvider
   visualProvider?: VisualProvider
   updatedAt: string
 }
@@ -157,7 +158,7 @@ type RunState = {
     outputDir: string
     finalVideoUrl: string | null
     packageZipUrl: string
-    sourceZipUrl: string
+    sourceZipUrl: string | null
     files: string[]
     blockedReason?: string[] | null
     videoAssets: Array<{
@@ -201,11 +202,20 @@ type BootstrapState = {
   capabilities?: {
     selected: {
       agentHost: AgentHost
+      modelProvider: ModelProvider
       visualProvider: VisualProvider
       imageModel: string
       defaultRuntime: RuntimeId
       executionMode: ExecutionMode
     }
+    modelProviders?: Array<{
+      id: ModelProvider
+      name: string
+      env: string
+      detail?: string
+      endpoint?: string
+      note?: string
+    }>
     codexNative?: {
       available: boolean
       binary: string
@@ -279,14 +289,53 @@ const agentDisplayName = (agentId?: string | null) =>
 const artifactDisplayName = (artifactId?: string | null) =>
   seedArtifacts.find((artifact) => artifact.id === artifactId)?.title ?? (artifactId ? artifactId : "任务图与成功标准")
 
-const modelOptions = ["gpt-5.5", "gpt-5.4", "gpt-5.3-codex", "tool-runner"]
-const agentHostOptions: Array<{ id: AgentHost; name: string; detail: string }> = [
-  { id: "codex_native", name: "Codex Native", detail: "本机 Agent，复用 Codex 登录。" },
-  { id: "codex_plugin", name: "Codex Plugin", detail: "插件化分发。" },
-  { id: "openai_api", name: "OpenAI API", detail: "托管自动化和图片 API。" },
-  { id: "claude_code", name: "Claude Code", detail: "代码、脚本、渲染。" },
-  { id: "custom_mcp", name: "Custom MCP", detail: "外部 MCP host。" },
+const modelOptions = [
+  "codex-default",
+  "codex-coding",
+  "openai-default",
+  "claude-sonnet",
+  "claude-opus",
+  "deepseek-chat",
+  "deepseek-reasoner",
+  "qwen-coder",
+  "qwen-plus",
+  "custom-model-id",
+  "local-tool-runner",
 ]
+const agentHostOptions: Array<{ id: AgentHost; name: string; detail: string }> = [
+  { id: "codex_native", name: "Codex Native", detail: "本机持久 threads，复用 Codex/ChatGPT 登录。" },
+  { id: "codex_plugin", name: "Codex Plugin", detail: "用 MCP 工具把任务交给 Codex 插件。" },
+  { id: "openai_api", name: "API Adapter", detail: "由后端 API adapter 承载自动化。" },
+  { id: "claude_code", name: "Claude Code", detail: "外部 coding agent 执行代码和脚本任务。" },
+  { id: "custom_mcp", name: "Custom MCP", detail: "任何能读写 artifact 的外部 Agent host。" },
+]
+const modelProviderOptions: Array<{ id: ModelProvider; name: string; detail: string; env: string }> = [
+  { id: "codex_oauth", name: "Codex / ChatGPT OAuth", detail: "默认路线：不需要 API key，复用本机 Codex 登录、image_generation 和 tool_search。", env: "codex auth login" },
+  { id: "openai_api", name: "ChatGPT / OpenAI API", detail: "用于托管自动化、Responses API、Image API 和 OpenAI-compatible model policy。", env: "OPENAI_API_KEY" },
+  { id: "anthropic_api", name: "Claude / Anthropic API", detail: "适合脚本、导演、代码任务；图片仍需 imagegen、上传或公开素材。", env: "ANTHROPIC_API_KEY" },
+  { id: "deepseek_api", name: "DeepSeek API", detail: "适合低成本研究、脚本和推理型任务；按外部 adapter 写入 artifact。", env: "DEEPSEEK_API_KEY" },
+  { id: "qwen_api", name: "Qwen API", detail: "适合中文、代码和多语言 Agent；通过 DashScope 或兼容 endpoint 接入。", env: "DASHSCOPE_API_KEY / QWEN_API_KEY" },
+  { id: "openai_compatible", name: "OpenAI-compatible Endpoint", detail: "兼容 v1/chat 或 v1/responses 的自定义模型服务。", env: "CUSTOM_MODEL_BASE_URL + CUSTOM_MODEL_API_KEY" },
+  { id: "custom_mcp", name: "Custom MCP / Manual Agent", detail: "模型由外部工具决定，AutoDirector 只负责任务、artifact 和质量门。", env: "MCP server URL" },
+]
+const modelProviderEnvLabels: Record<ModelProvider, string> = {
+  codex_oauth: "OAuth",
+  openai_api: "OPENAI_API_KEY",
+  anthropic_api: "ANTHROPIC_API_KEY",
+  deepseek_api: "DEEPSEEK_API_KEY",
+  qwen_api: "DASHSCOPE_API_KEY",
+  openai_compatible: "CUSTOM_MODEL_BASE_URL",
+  custom_mcp: "MCP",
+}
+const modelProviderDisplayLabels: Record<ModelProvider, string> = {
+  codex_oauth: "Codex OAuth",
+  openai_api: "OpenAI API",
+  anthropic_api: "Claude",
+  deepseek_api: "DeepSeek",
+  qwen_api: "Qwen",
+  openai_compatible: "Custom Endpoint",
+  custom_mcp: "Custom MCP",
+}
 const visualProviderOptions: Array<{ id: VisualProvider; name: string; detail: string }> = [
   { id: "codex_imagegen", name: "Codex imagegen", detail: "默认 gpt-image-2。" },
   { id: "openai_image_api", name: "Image API", detail: "显式 API 凭证。" },
@@ -294,16 +343,16 @@ const visualProviderOptions: Array<{ id: VisualProvider; name: string; detail: s
   { id: "public_source_only", name: "Public source", detail: "只用公开素材。" },
 ]
 const thinkingOptions: Array<{ value: AgentThinkingLevel; label: string }> = [
-  { value: "low", label: "low" },
-  { value: "medium", label: "medium" },
-  { value: "high", label: "high" },
-  { value: "xhigh", label: "extra high" },
+  { value: "low", label: "轻" },
+  { value: "medium", label: "中" },
+  { value: "high", label: "高" },
+  { value: "xhigh", label: "极高" },
 ]
 const settingsGroups: Array<{ id: SettingsGroup; label: string; detail: string }> = [
-  { id: "connect", label: "连接", detail: "账号 / Agent / 素材" },
-  { id: "models", label: "模型", detail: "推理 / 图片" },
-  { id: "render", label: "渲染", detail: "运行时 / 密度" },
-  { id: "automation", label: "自动化", detail: "无人值守规则" },
+  { id: "connect", label: "连接", detail: "接入配置" },
+  { id: "models", label: "模型", detail: "策略与图片" },
+  { id: "render", label: "渲染", detail: "运行环境" },
+  { id: "automation", label: "自动化", detail: "质量门" },
 ]
 const appViews: AppView[] = ["orchestrate", "agents", "delivery", "settings"]
 const isAppView = (value: string | null): value is AppView => Boolean(value && appViews.includes(value as AppView))
@@ -322,31 +371,17 @@ const runStatusLabels: Record<string, string> = {
 }
 const imageModelOptions = ["gpt-image-2", "gpt-image-1.5"]
 const READONLY_PUBLIC_DEMO = import.meta.env.VITE_AUTODIRECTOR_READONLY_DEMO === "1"
+const readonlyDeliveryAssetBaseName = "musk-altman-agentteam-v10"
+const readonlyDeliveryAssets = {
+  outputDir: "../assets",
+  finalVideoUrl: `../assets/${readonlyDeliveryAssetBaseName}.mp4`,
+  packageZipUrl: `../assets/${readonlyDeliveryAssetBaseName}-package.zip`,
+  mediaFile: `${readonlyDeliveryAssetBaseName}.mp4`,
+}
 const appAssetUrl = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\/+/, "")}`
 
-const buildLegacyWord = (codes: number[]) => codes.map((code) => String.fromCharCode(code)).join("")
-const legacyQualityInitials = buildLegacyWord([81, 65])
-const legacyAcceptanceWord = buildLegacyWord([0x9a8c, 0x6536])
-const legacyInspectWord = buildLegacyWord([0x5ba1, 0x67e5])
-
-const displayTextReplacements: Array<[RegExp, string]> = [
-  [new RegExp(`${legacyQualityInitials}\\s*交付`, "g"), "自动交付"],
-  [new RegExp(`${legacyQualityInitials}\\s*${legacyAcceptanceWord}`, "g"), "自动质检"],
-  [new RegExp(`${legacyQualityInitials}\\s*报告`, "g"), "质检报告"],
-  [new RegExp(`${legacyQualityInitials}\\s*勾选`, "g"), "质量门通过"],
-  [new RegExp(legacyQualityInitials, "g"), "Quality"],
-  [new RegExp(`${legacyAcceptanceWord}标准`, "g"), "质量门"],
-  [new RegExp(`${legacyAcceptanceWord}报告`, "g"), "质检报告"],
-  [new RegExp(`${legacyAcceptanceWord}路径`, "g"), "质检路径"],
-  [new RegExp(`可${legacyAcceptanceWord}`, "g"), "可验证"],
-  [new RegExp(legacyAcceptanceWord, "g"), "质检"],
-  [new RegExp(`${legacyInspectWord[0]}片`, "g"), "预览成片"],
-  [new RegExp(`交接${legacyInspectWord}`, "g"), "交接检查"],
-  [new RegExp(legacyInspectWord, "g"), "检查"],
-]
-
 function normalizeDisplayText(value: string) {
-  return displayTextReplacements.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), value)
+  return value
 }
 
 function normalizeDisplayValue<T>(value: T): T {
@@ -365,16 +400,16 @@ function createReadOnlyBootstrap(): BootstrapState {
   const modelPolicy = Object.fromEntries(agentSkills.map((agent) => [
     agent.id,
     {
-      model: agent.id === "programmer" ? "gpt-5.3-codex" : "gpt-5.5",
-      thinkingLevel: agent.id === "quality" || agent.id === "director" ? "high" : "medium",
-      thinkingLabel: agent.id === "quality" || agent.id === "director" ? "high" : "medium",
-      capabilities: agent.id === "asset" ? ["imagegen", "browser_search"] : agent.id === "render" ? ["ffmpeg", "zip", "probe"] : [],
+      model: agent.id === "recorder" ? "deterministic-recorder" : agent.id === "render" ? "local-tool-runner" : agent.id === "programmer" ? "codex-coding" : "codex-default",
+      thinkingLevel: agent.id === "recorder" ? "low" : agent.id === "quality" || agent.id === "director" ? "high" : "medium",
+      thinkingLabel: agent.id === "recorder" ? "轻" : agent.id === "quality" || agent.id === "director" ? "高" : "中",
+      capabilities: agent.id === "asset" ? ["imagegen", "browser_search"] : agent.id === "render" ? ["ffmpeg", "zip", "probe"] : agent.id === "recorder" ? ["jsonl", "skill_drafts"] : [],
     },
   ])) as Record<string, AgentModelPolicy>
   const run: RunState = {
     id: "run_public_readonly",
-    title: "Musk vs Altman v10",
-    brief: "做一个马斯克 vs 奥特曼新闻科普短片，要求 AutoDirector 自动跑完整 Agent pipeline，并保留 artifacts。",
+    title: "Public delivery v10",
+    brief: "制作一条 30 秒新闻科普短片，要求 AutoDirector 自动跑完整 Agent pipeline，并保留 artifacts。",
     runtime: "hyperframes",
     layoutMode: "simple",
     status: "final",
@@ -407,20 +442,21 @@ function createReadOnlyBootstrap(): BootstrapState {
       "Producer created task_graph and success criteria.",
       "Agent team completed artifact handoff trail.",
       "Quality gate passed final package checks.",
+      "Recorder wrote run memory and reusable skill drafts.",
     ],
     package: {
       status: "ready",
-      outputDir: "../assets",
-      finalVideoUrl: "../assets/musk-altman-agentteam-v10.mp4",
-      packageZipUrl: "../assets/musk-altman-agentteam-v10-package.zip",
-      sourceZipUrl: "../assets/musk-altman-agentteam-v10-package.zip",
+      outputDir: readonlyDeliveryAssets.outputDir,
+      finalVideoUrl: readonlyDeliveryAssets.finalVideoUrl,
+      packageZipUrl: readonlyDeliveryAssets.packageZipUrl,
+      sourceZipUrl: null,
       files: packageItems,
       blockedReason: null,
       videoAssets: [
         {
           id: "scene-news-context",
           title: "News context plate",
-          file: "musk-altman-agentteam-v10.mp4",
+          file: readonlyDeliveryAssets.mediaFile,
           source: "public/source evidence",
           license: "demo package manifest",
           purpose: "Opening conflict frame",
@@ -431,7 +467,7 @@ function createReadOnlyBootstrap(): BootstrapState {
         {
           id: "scene-power-map",
           title: "Power map plate",
-          file: "musk-altman-agentteam-v10.mp4",
+          file: readonlyDeliveryAssets.mediaFile,
           source: "generated runtime",
           license: "project source",
           purpose: "Explain governance tension",
@@ -456,6 +492,7 @@ function createReadOnlyBootstrap(): BootstrapState {
       layoutMode: "simple",
       executionMode: "codex_native",
       agentHost: "codex_native",
+      modelProvider: "codex_oauth",
       visualProvider: "codex_imagegen",
       updatedAt: now,
     },
@@ -475,18 +512,18 @@ function createReadOnlyBootstrap(): BootstrapState {
     activeRunId: run.id,
     activeRun: run,
     runs: [run],
-    workers: agentSkills.map((agent, index) => ({
+    workers: agentSkills.map((agent) => ({
       id: agent.id,
       shortName: agent.shortName,
       role: agent.role,
-      model: modelPolicy[agent.id]?.model ?? "gpt-5.5",
+      model: modelPolicy[agent.id]?.model ?? "codex-default",
       thinkingLevel: modelPolicy[agent.id]?.thinkingLevel ?? "medium",
-      thinkingLabel: modelPolicy[agent.id]?.thinkingLabel ?? "medium",
+      thinkingLabel: modelPolicy[agent.id]?.thinkingLabel ?? "中",
       capabilities: modelPolicy[agent.id]?.capabilities ?? [],
-      status: index < agentSkills.length - 1 ? "done" : "working",
+      status: "done",
       inbox: agent.inputs,
       outbox: agent.outputs,
-      currentTaskId: index < agentSkills.length - 1 ? null : "quality_report",
+      currentTaskId: null,
       artifacts: agent.outputs,
       lastActive: now,
     })),
@@ -494,16 +531,19 @@ function createReadOnlyBootstrap(): BootstrapState {
       { id: "public-event-1", type: "producer.plan.ready", payload: { readonly: true }, createdAt: now },
       { id: "public-event-2", type: "render.final.ready", payload: { readonly: true }, createdAt: now },
       { id: "public-event-3", type: "quality.package.passed", payload: { readonly: true }, createdAt: now },
+      { id: "public-event-4", type: "recorder.memory.ready", payload: { readonly: true }, createdAt: now },
     ],
     pipeline: timeline.map((step) => ({ id: step.id, label: step.label, agentId: step.agentId, outputId: step.outputId })),
     capabilities: {
       selected: {
         agentHost: "codex_native",
+        modelProvider: "codex_oauth",
         visualProvider: "codex_imagegen",
         imageModel: "gpt-image-2",
         defaultRuntime: "hyperframes",
         executionMode: "codex_native",
       },
+      modelProviders: modelProviderOptions,
       codexNative: {
         available: false,
         binary: "public-readonly",
@@ -570,7 +610,7 @@ function App() {
     setBootstrap(normalizeBootstrapForDisplay(await api<BootstrapState>("/api/settings", { method: "PATCH", body: settings })))
   }
 
-  async function completeOnboarding(settings: Pick<AppSettings, "defaultRuntime" | "layoutMode" | "agentHost" | "visualProvider">) {
+  async function completeOnboarding(settings: Pick<AppSettings, "defaultRuntime" | "layoutMode" | "agentHost" | "modelProvider" | "visualProvider">) {
     if (READONLY_PUBLIC_DEMO) return
     setBootstrap(normalizeBootstrapForDisplay(await api<BootstrapState>("/api/onboarding", { method: "POST", body: settings })))
     startDraft()
@@ -858,7 +898,7 @@ function isProductionBriefTurn(text: string) {
   const compact = text.replace(/\s+/g, " ").trim()
   if (!compact) return false
   if (/^(你?好|hi|hello|hey|在吗|你是谁|你能做什么|介绍一下你自己|help|\?|？)$/i.test(compact)) return false
-  return /(视频|短片|宣传|介绍|产品|科普|教程|新闻|广告|片|剪辑|分镜|字幕|素材|马斯克|奥特曼|sam|altman|musk|openai|做一个|生成|制作|讲一下|解释)/i.test(compact) || compact.length >= 18
+  return /(视频|短片|宣传|介绍|产品|科普|教程|新闻|广告|片|剪辑|分镜|字幕|素材|做一个|生成|制作|讲一下|解释)/i.test(compact) || compact.length >= 18
 }
 
 function GlobalHeader({
@@ -969,7 +1009,7 @@ function ProjectSidebar({
             <SectionLabel>历史</SectionLabel>
             <span>{historyRuns.length}</span>
           </button>
-          <Button size="icon" className="size-7 rounded-lg" onClick={onCreateRun} disabled={readOnly} aria-label={readOnly ? "公网展示不可新建项目" : "新建项目"}>
+          <Button size="icon" className="size-7 rounded-lg" onClick={onCreateRun} disabled={readOnly} aria-label={readOnly ? "只读展示不可新建项目" : "新建项目"}>
             <Plus className="size-3.5" aria-hidden="true" />
           </Button>
         </div>
@@ -1164,7 +1204,7 @@ function ProducerWorkbench({
                 onChange={(event) => setMessage(event.target.value)}
                 className="min-h-11 resize-none rounded-lg border-border bg-background text-sm"
                 disabled={readOnly}
-                placeholder={readOnly ? "公网 1:1 展示：Agent 对话不可用。" : draftOpen ? "描述你要生产的视频..." : "输入新需求或直接继续自动流水线..."}
+                placeholder={readOnly ? "1:1 只读展示：Agent 对话不可用。" : draftOpen ? "描述你要生产的视频..." : "输入新需求或直接继续自动流水线..."}
               />
               <Button
                 className={cn("rounded-lg", runBlocked && "blocked-action")}
@@ -1539,9 +1579,9 @@ function AgentDetailView({ agent, worker }: { agent: (typeof agentSkills)[number
       <InfoBlock title="模型策略">
         <div className="metadata-grid">
           <span>模型</span>
-          <strong>{worker?.model ?? "gpt-5.5"}</strong>
+          <strong>{worker?.model ?? "codex-default"}</strong>
           <span>推理</span>
-          <strong>{worker?.thinkingLabel ?? worker?.thinkingLevel ?? "medium"}</strong>
+          <strong>{worker?.thinkingLabel ?? worker?.thinkingLevel ?? "中"}</strong>
           <span>能力</span>
           <strong>{worker?.capabilities?.length ? worker.capabilities.join(", ") : "standard"}</strong>
         </div>
@@ -1909,7 +1949,7 @@ function FinalDeliveryView({ run, runtimeName }: { run: RunState | null; runtime
 
         <InfoBlock title="自动质量门">
           <div className="quality-gate-grid">
-            {["30 秒 mp4 可播放", "含视频素材", "源码 ZIP 可下载", "素材风险已标注", "引用与日志完整", "可局部返修"].map((item) => (
+            {["30 秒 mp4 可播放", "含视频素材", "代码包可下载", "素材风险已标注", "引用与日志完整", "可局部返修"].map((item) => (
               <CheckRow key={item} label={item} done={run?.status === "final"} />
             ))}
           </div>
@@ -1943,7 +1983,7 @@ function SettingsView({
   const oauthConnected = settings.authStatus === "connected" || Boolean(openaiAccount)
   const [activeSettingsGroup, setActiveSettingsGroup] = useState<SettingsGroup>("connect")
   const updateAgentPolicy = (agentId: string, patch: Partial<AgentModelPolicy>) => {
-    const current = settings.modelPolicy?.[agentId] ?? { model: "gpt-5.5", thinkingLevel: "medium", thinkingLabel: "medium" }
+    const current = settings.modelPolicy?.[agentId] ?? { model: "codex-default", thinkingLevel: "medium", thinkingLabel: "中" }
     const nextPolicy = {
       ...settings.modelPolicy,
       [agentId]: {
@@ -1961,7 +2001,7 @@ function SettingsView({
         <div>
           <SectionLabel>设置</SectionLabel>
           <h1>控制台设置</h1>
-          <p>连接、素材、运行时、Agent。</p>
+          <p>连接、模型供应商、素材、运行时、Agent。</p>
         </div>
         <Button className="settings-primary-action" onClick={onConnect} disabled={readOnly}>
           <KeyRound data-icon="inline-start" aria-hidden="true" />
@@ -1983,92 +2023,67 @@ function SettingsView({
         ))}
       </nav>
 
-      <div className="settings-layout">
-        <aside className="settings-rail" aria-label="设置概览">
-          <div className="settings-rail-card">
-            <SectionLabel>概览</SectionLabel>
-            <div className="settings-health-list">
-              <div>
-                <span>Agent</span>
-                <strong>{agentHostOptions.find((option) => option.id === (settings.agentHost ?? "codex_native"))?.name ?? "Codex Native Kernel"}</strong>
-              </div>
-              <div>
-                <span>素材</span>
-                <strong>{visualProviderOptions.find((option) => option.id === (settings.visualProvider ?? "codex_imagegen"))?.name ?? "Codex imagegen"}</strong>
-              </div>
-              <div>
-                <span>运行时</span>
-                <strong>{settings.defaultRuntime === "hyperframes" ? "HyperFrames" : "Remotion"}</strong>
-              </div>
-              <div>
-                <span>密度</span>
-                <strong>{settings.layoutMode === "simple" ? "标准" : "专家"}</strong>
-              </div>
-            </div>
-          </div>
+      <div className="settings-command-strip" aria-label="当前设置概览">
+        <div>
+          <span>Agent</span>
+          <strong>{agentHostOptions.find((option) => option.id === (settings.agentHost ?? "codex_native"))?.name ?? "Codex Native Kernel"}</strong>
+        </div>
+        <div>
+          <span>模型</span>
+          <strong>{modelProviderDisplayLabels[settings.modelProvider ?? "codex_oauth"]}</strong>
+        </div>
+        <div>
+          <span>素材</span>
+          <strong>{visualProviderOptions.find((option) => option.id === (settings.visualProvider ?? "codex_imagegen"))?.name ?? "Codex imagegen"}</strong>
+        </div>
+        <div>
+          <span>运行时</span>
+          <strong>{settings.defaultRuntime === "hyperframes" ? "HyperFrames" : "Remotion"}</strong>
+        </div>
+        <div>
+          <span>状态</span>
+          <strong>{capabilities?.codexNative?.appServer ? "服务可用" : "只读/未连接"}</strong>
+        </div>
+      </div>
 
-          <div className="settings-rail-card settings-rail-card--soft">
-            <SectionLabel>状态</SectionLabel>
-            <div className="settings-readiness">
-              <CheckRow label="应用服务" done={Boolean(capabilities?.codexNative?.appServer)} />
-              <CheckRow label="ChatGPT 登录" done={Boolean(capabilities?.codexNative?.loggedInWithChatGPT)} />
-              <CheckRow label="图片生成" done={Boolean(capabilities?.codexNative?.imageGeneration)} />
-              <CheckRow label="工具搜索" done={Boolean(capabilities?.codexNative?.toolSearch)} />
-            </div>
-          </div>
-        </aside>
-
-        <div className="settings-sections" data-active-group={activeSettingsGroup}>
-        <section className="setting-card setting-card--wide setting-card--connect">
+      <div className="settings-sections" data-active-group={activeSettingsGroup}>
+        <section className="setting-card setting-card--wide setting-card--compact setting-card--connect">
           <div>
             <SectionLabel>连接</SectionLabel>
-            <h2>模型连接</h2>
-            <p>只显示可用性，不暴露本地账号细节。</p>
+            <h2>连接状态</h2>
           </div>
           <div className="setting-status-stack">
             <div className="setting-status-row">
-              <span>Codex 服务</span>
+              <span>服务</span>
               <Badge variant="outline" className={cn("rounded-md", capabilities?.codexNative?.appServer ? "text-secondary" : "text-destructive")}>
                 {capabilities?.codexNative?.appServer ? "可用" : "缺失"}
               </Badge>
             </div>
             <div className="setting-status-row">
-              <span>ChatGPT</span>
+              <span>登录</span>
               <Badge variant="outline" className={cn("rounded-md", capabilities?.codexNative?.loggedInWithChatGPT ? "text-secondary" : "text-muted-foreground")}>
                 {capabilities?.codexNative?.loggedInWithChatGPT ? "已连接" : "未登录"}
               </Badge>
             </div>
             <div className="setting-status-row">
-              <span>图片生成</span>
+              <span>图片</span>
               <Badge variant="outline" className={cn("rounded-md", capabilities?.codexNative?.imageGeneration ? "text-secondary" : "text-destructive")}>
                 {capabilities?.codexNative?.imageGeneration ? "启用" : "未启用"}
               </Badge>
             </div>
             <div className="setting-status-row">
-              <span>工具搜索</span>
+              <span>工具</span>
               <Badge variant="outline" className={cn("rounded-md", capabilities?.codexNative?.toolSearch ? "text-secondary" : "text-destructive")}>
                 {capabilities?.codexNative?.toolSearch ? "启用" : "未启用"}
               </Badge>
             </div>
-            {connectionOptions.map((option) => (
-              <div key={option.id} className="setting-status-row">
-                <span>{option.id === "chatgpt" ? "OAuth" : option.id === "api_key" ? "API Key" : option.name}</span>
-                <Badge
-                  variant="outline"
-                  className={cn("rounded-md", option.id === "chatgpt" && oauthConnected ? "text-secondary" : "text-muted-foreground")}
-                >
-                  {option.id === "chatgpt" && oauthConnected ? "已连接" : option.status}
-                </Badge>
-              </div>
-            ))}
           </div>
         </section>
 
-        <section className="setting-card setting-card--wide setting-card--connect">
+        <section className="setting-card setting-card--wide setting-card--compact setting-card--connect">
           <div>
             <SectionLabel>Agent</SectionLabel>
-            <h2>Agent 接入方式</h2>
-            <p>选择 Producer 和各 Agent 的承载方式。</p>
+            <h2>Agent Host</h2>
           </div>
           <div className="setting-choice-list">
             {agentHostOptions.map((option) => (
@@ -2078,19 +2093,42 @@ function SettingsView({
                 className={cn("choice-row", (settings.agentHost ?? "codex_native") === option.id && "choice-row--active")}
                 disabled={readOnly}
                 onClick={() => onSettings({ agentHost: option.id })}
+                aria-label={`${option.name}: ${option.detail}`}
+                title={option.detail}
               >
                 <span>{option.name}</span>
-                <span>{option.detail}</span>
               </button>
             ))}
           </div>
         </section>
 
-        <section className="setting-card setting-card--wide setting-card--connect">
+        <section className="setting-card setting-card--wide setting-card--compact setting-card--provider setting-card--connect">
+          <div>
+            <SectionLabel>模型供应商</SectionLabel>
+            <h2>模型来源</h2>
+          </div>
+          <div className="setting-choice-list">
+            {modelProviderOptions.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                className={cn("choice-row", (settings.modelProvider ?? "codex_oauth") === option.id && "choice-row--active")}
+                disabled={readOnly}
+                onClick={() => onSettings({ modelProvider: option.id })}
+                aria-label={`${option.name}: ${option.detail}; ${option.env}`}
+                title={`${option.detail} ${option.env}`}
+              >
+                <span>{modelProviderDisplayLabels[option.id]}</span>
+                <span className="choice-row-note">{modelProviderEnvLabels[option.id]}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="setting-card setting-card--wide setting-card--compact setting-card--connect">
           <div>
             <SectionLabel>素材</SectionLabel>
             <h2>素材来源</h2>
-            <p>只接受真实产图、API、上传或公开来源。</p>
           </div>
           <div className="setting-choice-list">
             {visualProviderOptions.map((option) => (
@@ -2100,9 +2138,10 @@ function SettingsView({
                 className={cn("choice-row", (settings.visualProvider ?? "codex_imagegen") === option.id && "choice-row--active")}
                 disabled={readOnly}
                 onClick={() => onSettings({ visualProvider: option.id })}
+                aria-label={`${option.name}: ${option.detail}`}
+                title={option.detail}
               >
                 <span>{option.name}</span>
-                <span>{option.detail}</span>
               </button>
             ))}
           </div>
@@ -2138,7 +2177,7 @@ function SettingsView({
           </div>
           <div className="model-policy-list" aria-label="Agent 模型策略">
             {agentSkills.map((agent) => {
-              const policy = settings.modelPolicy?.[agent.id] ?? { model: "gpt-5.5", thinkingLevel: "medium", thinkingLabel: "medium", capabilities: [] }
+              const policy = settings.modelPolicy?.[agent.id] ?? { model: "codex-default", thinkingLevel: "medium", thinkingLabel: "中", capabilities: [] }
               const capabilitiesLabel = policy.capabilities?.length ? policy.capabilities.join(", ") : "standard"
               return (
                 <article key={agent.id} className="model-policy-card">
@@ -2241,7 +2280,6 @@ function SettingsView({
           </div>
         </section>
         </div>
-      </div>
     </section>
   )
 }
@@ -2288,7 +2326,7 @@ $ npm run build
 $ npm start
 -------------
 Web UI: http://127.0.0.1:8787
-评委快速检查: npm run verify:quick
+本地快速检查: npm run verify:quick
 完整 Agent 检查: npm run verify:full`}</pre>
         </div>
       </section>
@@ -2376,7 +2414,7 @@ function BlockedImagegenReadOnlyNotice({ run }: { run: RunState | null }) {
           <li key={reason}>{reason}</li>
         ))}
       </ul>
-      <p className="blocked-notice-readonly">公网展示模式只显示阻塞原因，不暴露本地文件接口。</p>
+      <p className="blocked-notice-readonly">只读展示模式只显示阻塞原因，不暴露本地文件接口。</p>
     </div>
   )
 }
@@ -2531,16 +2569,18 @@ function Onboarding({
   onConnect,
 }: {
   settings: AppSettings
-  onComplete: (settings: Pick<AppSettings, "defaultRuntime" | "layoutMode" | "agentHost" | "visualProvider">) => Promise<void>
+  onComplete: (settings: Pick<AppSettings, "defaultRuntime" | "layoutMode" | "agentHost" | "modelProvider" | "visualProvider">) => Promise<void>
   onConnect: () => Promise<void>
 }) {
   const [runtime, setRuntime] = useState<AppSettings["defaultRuntime"]>(settings.defaultRuntime)
   const [agentHost, setAgentHost] = useState<AgentHost>(settings.agentHost ?? "codex_native")
+  const [modelProvider, setModelProvider] = useState<ModelProvider>(settings.modelProvider ?? "codex_oauth")
   const [visualProvider, setVisualProvider] = useState<VisualProvider>(settings.visualProvider ?? "codex_imagegen")
   const [layoutMode, setLayoutMode] = useState<LayoutMode>("simple")
   const [step, setStep] = useState(0)
   const [busy, setBusy] = useState(false)
   const canContinue = true
+  const setupSteps = ["Agent 承载", "模型供应商", "视觉来源", "运行时", "界面密度"]
 
   return (
     <div className="onboarding-shell">
@@ -2561,6 +2601,7 @@ function Onboarding({
             <pre>{`$ npm ci
 $ npm run build
 ? Agent 承载: ${agentHostOptions.find((option) => option.id === agentHost)?.name ?? "Codex Native Kernel"}
+? 模型供应商: ${modelProviderOptions.find((option) => option.id === modelProvider)?.name ?? "Codex / ChatGPT OAuth"}
 ? 视觉来源: ${visualProviderOptions.find((option) => option.id === visualProvider)?.name ?? "Codex imagegen"}
 ? 运行时: ${runtime === "hyperframes" ? "HyperFrames" : "Remotion"}
 ? 界面密度: ${layoutMode === "simple" ? "标准" : "专家"}
@@ -2581,7 +2622,7 @@ $ npm start`}</pre>
             <p>一次只做一个选择，后面可以在设置里改。</p>
           </div>
           <div className="setup-steps-row">
-            {["Agent 承载", "视觉来源", "运行时", "界面密度"].map((label, index) => (
+            {setupSteps.map((label, index) => (
               <div key={label} className={cn("setup-step", step === index && "setup-step--active")}>
                 <span>{String(index + 1).padStart(2, "0")}</span>
                 <strong>{label}</strong>
@@ -2607,6 +2648,21 @@ $ npm start`}</pre>
           ) : null}
           {step === 1 ? (
             <div className="setup-card">
+              <SectionLabel>模型供应商</SectionLabel>
+              <h2>选择默认模型来源</h2>
+              <p>AutoDirector 不把模型绑定死：Codex OAuth、OpenAI API、Claude、DeepSeek、Qwen 和自定义 endpoint 都可以作为 Agent 模型来源；没有图片能力的 provider 需要搭配 imagegen、上传或公开素材。</p>
+              <div className="mt-4 grid gap-2 md:grid-cols-2">
+                {modelProviderOptions.map((option) => (
+                  <button key={option.id} className={cn("choice-row", modelProvider === option.id && "choice-row--active")} onClick={() => setModelProvider(option.id)} type="button">
+                    <span>{option.name}</span>
+                    <span>{option.detail}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          {step === 2 ? (
+            <div className="setup-card">
               <SectionLabel>视觉来源</SectionLabel>
               <h2>图片和导图从哪里来</h2>
               <p>只有 Native Kernel / Plugin / API / 上传可以通过 imagegen 类视觉门禁；其他模式不会影响脚本、代码、渲染，但不能伪造生成图。</p>
@@ -2624,7 +2680,7 @@ $ npm start`}</pre>
               </Button>
             </div>
           ) : null}
-          {step === 2 ? (
+          {step === 3 ? (
             <div className="setup-card">
               <SectionLabel>默认运行时</SectionLabel>
               <h2>选择视频渲染栈</h2>
@@ -2639,7 +2695,7 @@ $ npm start`}</pre>
               </div>
             </div>
           ) : null}
-          {step === 3 ? (
+          {step === 4 ? (
             <div className="setup-card">
               <SectionLabel>界面密度</SectionLabel>
               <h2>选择工作台密度</h2>
@@ -2658,7 +2714,7 @@ $ npm start`}</pre>
 
         <div className="onboarding-actions">
           <Button variant="outline" className="rounded-lg" disabled={step === 0 || busy} onClick={() => setStep((value) => Math.max(0, value - 1))}>上一步</Button>
-          {step < 3 ? (
+          {step < setupSteps.length - 1 ? (
             <Button className="rounded-lg" disabled={!canContinue || busy} onClick={() => setStep((value) => value + 1)}>
               继续
               <ChevronRight data-icon="inline-end" aria-hidden="true" />
@@ -2670,7 +2726,7 @@ $ npm start`}</pre>
               onClick={async () => {
                 setBusy(true)
                 try {
-                  await onComplete({ defaultRuntime: runtime, layoutMode, agentHost, visualProvider })
+                  await onComplete({ defaultRuntime: runtime, layoutMode, agentHost, modelProvider, visualProvider })
                 } finally {
                   setBusy(false)
                 }

@@ -17,7 +17,8 @@ Producer owns the whole pipeline:
 5. Video Engineer converts the creative plan into a HyperFrames/Remotion runtime plan and writes the source project.
 6. Render Agent renders preview evidence, audio mix, and final media.
 7. Quality Gate validates the final package.
-8. If Quality Gate fails, Producer sends a narrow patch task to the responsible Agent only.
+8. Recorder preserves the run memory and drafts reusable skills without blocking delivery.
+9. If Quality Gate fails, Producer sends a narrow patch task to the responsible Agent only.
 
 ## Inputs
 
@@ -95,7 +96,7 @@ For product intros, launch reels, hackathon explainers, and agent-team demos, Pr
 - The team must produce these artifacts before implementation: `script.md`, TTS plan, `shotlist.json`, `visual_event_map.json`, `imagegen_prompt_pack.json`, `motion_board.json`, `transition_plan.json`, `sound_plan.json`, and `quality_report.md`.
 - The Director must explicitly mark which agent-owned visual event supports each phrase: Producer, Research, Story, Asset, Video Engineer, Render, Quality Gate, or Delivery.
 - If the user says the result is "too static", "cards are too few", "the voice says more than the screen shows", or similar, Producer must dispatch a narrow patch to Director + Motion + Video Programmer to increase sentence-level visual mapping before asking for new assets.
-- The final piece should feel like seven strong agents collaborated, not like one model made a polished card deck.
+- The final piece should feel like a strong production team collaborated, not like one model made a polished card deck; Recorder should preserve the useful lessons afterward.
 
 Before dispatching Director, Producer must include:
 

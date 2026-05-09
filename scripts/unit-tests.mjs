@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { mkdtempSync, rmSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { spawnSync } from "node:child_process"
@@ -15,6 +15,79 @@ function testPathInsideDir() {
   assert.equal(isPathInsideDir("/tmp/autodirector-safe-neighbor/scene.png", base), false)
   assert.equal(isPathInsideDir("/tmp/other/scene.png", base), false)
   assert.equal(isPathInsideDir(join(base, "..", "other", "scene.png"), base), false)
+}
+
+function testDemoManifest() {
+  const manifestPath = "intro-site/demo-manifest.json"
+  if (!existsSync(manifestPath)) return
+  const manifest = JSON.parse(spawnSync("node", ["-e", `process.stdout.write(require('fs').readFileSync(${JSON.stringify(manifestPath)}, 'utf8'))`], { encoding: "utf8" }).stdout)
+  assert.equal(manifest.publicShowcaseUrl, "https://autodirector.felixypz.me/")
+  assert.match(manifest.publicDemoAssets.finalVideo.url, /musk-altman-agentteam-v10\.mp4$/)
+  assert.match(manifest.publicDemoAssets.deliveryPackage.url, /musk-altman-agentteam-v10-package\.zip$/)
+  assert.equal(Array.isArray(manifest.sourceZip.verificationCommands), true)
+  assert.equal("judgeCommands" in manifest.sourceZip, false)
+}
+
+function testPublicPluginMetadata() {
+  const plugin = JSON.parse(readFileSync("plugins/autodirector-codex/.codex-plugin/plugin.json", "utf8"))
+  const urls = [
+    plugin.homepage,
+    plugin.author?.url,
+    plugin.interface?.websiteURL,
+    plugin.interface?.privacyPolicyURL,
+    plugin.interface?.termsOfServiceURL,
+  ]
+  for (const url of urls) {
+    assert.equal(typeof url, "string")
+    assert.match(url, /^https:\/\//)
+    assert.doesNotMatch(url, /localhost|127\.0\.0\.1|autodirector\.local|easyclaw\.link/i)
+  }
+}
+
+function testGeneralExampleEvidencePlan() {
+  const plan = JSON.parse(readFileSync("examples/smart-water-bottle/evidence-plan.json", "utf8"))
+  assert.equal(plan.input, "examples/smart-water-bottle/brief.json")
+  assert.equal(plan.expectedArtifacts.length, 7)
+  assert.deepEqual(plan.expectedArtifacts.map((item) => item.agentId), [
+    "producer",
+    "research",
+    "director",
+    "asset",
+    "programmer",
+    "render",
+    "quality",
+  ])
+  assert(plan.qualityGate.allowPackageWhen.length >= 4)
+  assert(plan.qualityGate.blockPackageWhen.length >= 4)
+}
+
+function testHealthcheckHasGenericSecretScanning() {
+  const healthcheck = readFileSync("scripts/healthcheck.mjs", "utf8")
+  assert.doesNotMatch(healthcheck, /localUsersPrefix|localUserPath|localEmailUser|outlookDomainNeedle/)
+  assert.doesNotMatch(healthcheck, /f120|927/)
+  assert.match(healthcheck, /homedir\(\)/)
+  assert.match(healthcheck, /secretPatterns/)
+}
+
+function testReviewRiskRegressionsStayClosed() {
+  const coreServer = readFileSync("server/index.mjs", "utf8")
+  const app = readFileSync("src/App.tsx", "utf8")
+  const nativeAgents = readFileSync("server/codex-native-agents.mjs", "utf8")
+  assert.doesNotMatch(`${coreServer}\n${app}\n${nativeAgents}`, /gpt-5\.[0-9]|gpt-5\.3-codex|3c463363/)
+  assert.doesNotMatch(coreServer, /马斯克|奥特曼|Elon Musk|Sam Altman|news_musk|news_altman|musk_altman_news/)
+  assert.match(coreServer, /isPathInsideDir\(candidate, rootDir\)/)
+  assert.match(coreServer, /AUTODIRECTOR_HYPERFRAMES_SKILL_DIR/)
+  assert.match(coreServer, /createCipheriv/)
+  assert.match(coreServer, /cloneStateForDisk/)
+  assert.match(coreServer, /hydrateStateFromDisk/)
+  assert.match(coreServer, /openAiSecretFields = \["accessToken", "refreshToken", "idToken"\]/)
+  assert.match(coreServer, /callExternalTextAdapter/)
+  assert.match(coreServer, /callOpenAiCompatibleAdapter/)
+  assert.match(coreServer, /callAnthropicAdapter/)
+  assert.match(coreServer, /DEEPSEEK_API_KEY/)
+  assert.match(coreServer, /DASHSCOPE_API_KEY/)
+  assert.match(app, /ANTHROPIC_API_KEY/)
+  assert.match(app, /CUSTOM_MODEL_BASE_URL/)
 }
 
 function testArtifactSchema() {
@@ -58,7 +131,10 @@ function testPackageCodeExcludesGeneratedFiles() {
     const entries = zipinfo.stdout.split(/\r?\n/).filter(Boolean)
     assert(entries.includes("JUDGE_GUIDE.md"))
     assert(entries.includes("examples/smart-water-bottle/brief.json"))
-    const forbidden = /(^|\/)(node_modules|\.git|dist|\.tmp|\.autodirector|\.agents|output|intro-site)(\/|$)|\.(mp4|mov|mp3|wav|aiff|ogg|m4a|png|jpg|jpeg|webp|zip|log|pyc|pyo)$/i
+    assert(entries.includes("docs/agent-skills/recorder.md"))
+    assert(entries.includes("plugins/autodirector-codex/skills/recorder/SKILL.md"))
+    assert.equal(entries.some((entry) => entry.startsWith("intro-site/")), false)
+    const forbidden = /(^|\/)(node_modules|\.git|dist|\.tmp|\.autodirector|\.agents|output|scripts\/archive|intro-site)(\/|$)|\.(mp4|mov|mp3|wav|aiff|ogg|m4a|png|jpg|jpeg|webp|zip|log|pyc|pyo)$/i
     assert.equal(entries.some((entry) => forbidden.test(entry)), false)
   } finally {
     rmSync(sandbox, { recursive: true, force: true })
@@ -66,7 +142,12 @@ function testPackageCodeExcludesGeneratedFiles() {
 }
 
 testPathInsideDir()
+testDemoManifest()
+testPublicPluginMetadata()
+testGeneralExampleEvidencePlan()
+testHealthcheckHasGenericSecretScanning()
+testReviewRiskRegressionsStayClosed()
 testArtifactSchema()
 testPackageCodeExcludesGeneratedFiles()
 
-console.log("Unit tests passed: path safety, artifact schema, and source ZIP exclusions.")
+console.log("Unit tests passed: path safety, public metadata, healthcheck guardrails, artifact schema, demo manifest, and source ZIP boundary.")

@@ -12,11 +12,13 @@ import {
 } from "node:fs"
 import { createServer } from "node:http"
 import { homedir } from "node:os"
-import { basename, dirname, extname, join, resolve } from "node:path"
+import { basename, dirname, extname, join, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { spawn, spawnSync } from "node:child_process"
 import {
   createHash,
+  createCipheriv,
+  createDecipheriv,
   createPublicKey,
   createSign,
   createVerify,
@@ -28,6 +30,7 @@ import { codexBinary, codexNativeStatus, getCodexAppServerRuntimeStatus } from "
 import { createCodexNativeAgentRuntime } from "./codex-native-agents.mjs"
 import { normalizeAgentArtifact } from "./artifact-schema.mjs"
 import { isPathInsideDir } from "./security-utils.mjs"
+import { seededNewsDemoPlanForBrief } from "./demo-plans/musk-altman-news.mjs"
 
 const rootDir = resolve(fileURLToPath(new URL("..", import.meta.url)))
 const stateDir = resolve(process.env.AUTODIRECTOR_STATE_DIR ?? join(rootDir, ".autodirector"))
@@ -47,16 +50,22 @@ const agents = [
   ["programmer", "Video Engineer", "HyperFrames / Remotion 规划与编程"],
   ["render", "Render", "渲染工程"],
   ["quality", "Quality Gate", "自动质检"],
+  ["recorder", "Recorder", "工作记录 / Skill 沉淀"],
 ]
 
+const defaultCodexModel = "codex-default"
+const defaultCodexCodingModel = "codex-coding"
+const localRenderModel = "local-tool-runner"
+
 const agentModelPolicy = {
-  producer: { model: "gpt-5.5", thinkingLevel: "xhigh", thinkingLabel: "extra high" },
-  research: { model: "gpt-5.5", thinkingLevel: "high", thinkingLabel: "high" },
-  director: { model: "gpt-5.5", thinkingLevel: "high", thinkingLabel: "high" },
-  asset: { model: "gpt-5.5", thinkingLevel: "high", thinkingLabel: "high", capabilities: ["imagegen", "browser_search", "web_music_search"] },
-  programmer: { model: "gpt-5.5", thinkingLevel: "high", thinkingLabel: "high" },
-  render: { model: "tool-runner", thinkingLevel: "low", thinkingLabel: "low", capabilities: ["ffmpeg", "zip", "probe"] },
-  quality: { model: "gpt-5.5", thinkingLevel: "high", thinkingLabel: "high" },
+  producer: { model: defaultCodexModel, thinkingLevel: "xhigh", thinkingLabel: "extra high" },
+  research: { model: defaultCodexModel, thinkingLevel: "high", thinkingLabel: "high" },
+  director: { model: defaultCodexModel, thinkingLevel: "high", thinkingLabel: "high" },
+  asset: { model: defaultCodexModel, thinkingLevel: "high", thinkingLabel: "high", capabilities: ["imagegen", "browser_search", "web_music_search"] },
+  programmer: { model: defaultCodexCodingModel, thinkingLevel: "high", thinkingLabel: "high" },
+  render: { model: localRenderModel, thinkingLevel: "low", thinkingLabel: "low", capabilities: ["ffmpeg", "zip", "probe"] },
+  quality: { model: defaultCodexModel, thinkingLevel: "high", thinkingLabel: "high" },
+  recorder: { model: "deterministic-recorder", thinkingLevel: "low", thinkingLabel: "low", capabilities: ["jsonl", "skill_drafts", "run_memory"] },
 }
 
 const defaultImageModel = "gpt-image-2"
@@ -100,6 +109,71 @@ const agentHostOptions = [
     webSearch: "depends",
     codeExecution: "depends",
     note: "Runtime-agnostic route. Capabilities are declared by the connected host.",
+  },
+]
+const modelProviderOptions = [
+  {
+    id: "codex_oauth",
+    name: "Codex / ChatGPT OAuth",
+    env: "codex auth login",
+    keyless: true,
+    endpoint: "local Codex app-server",
+    imagegen: true,
+    note: "Default route. Uses the user's local Codex/ChatGPT login, native image_generation, and tool_search.",
+  },
+  {
+    id: "openai_api",
+    name: "ChatGPT / OpenAI API",
+    env: "OPENAI_API_KEY",
+    keyless: false,
+    endpoint: "https://api.openai.com/v1",
+    imagegen: true,
+    note: "Hosted automation route for OpenAI text and image models when the user supplies API credentials.",
+  },
+  {
+    id: "anthropic_api",
+    name: "Claude / Anthropic API",
+    env: "ANTHROPIC_API_KEY",
+    keyless: false,
+    endpoint: "https://api.anthropic.com",
+    imagegen: false,
+    note: "Can run text/code Agent tasks through an adapter; generated hero visuals need another visual provider.",
+  },
+  {
+    id: "deepseek_api",
+    name: "DeepSeek API",
+    env: "DEEPSEEK_API_KEY",
+    keyless: false,
+    endpoint: "https://api.deepseek.com",
+    imagegen: false,
+    note: "Can run research, script, and reasoning tasks through an adapter; visual generation remains separate.",
+  },
+  {
+    id: "qwen_api",
+    name: "Qwen API",
+    env: "DASHSCOPE_API_KEY / QWEN_API_KEY",
+    keyless: false,
+    endpoint: "DashScope or OpenAI-compatible endpoint",
+    imagegen: false,
+    note: "Can run Chinese/code-heavy Agent tasks through an adapter; visual generation remains separate.",
+  },
+  {
+    id: "openai_compatible",
+    name: "OpenAI-compatible Endpoint",
+    env: "CUSTOM_MODEL_BASE_URL + CUSTOM_MODEL_API_KEY",
+    keyless: false,
+    endpoint: "user configured",
+    imagegen: "depends",
+    note: "For local LLM gateways, enterprise proxies, or third-party providers exposing compatible endpoints.",
+  },
+  {
+    id: "custom_mcp",
+    name: "Custom MCP / Manual Agent",
+    env: "MCP server URL",
+    keyless: "depends",
+    endpoint: "declared by external host",
+    imagegen: "depends",
+    note: "AutoDirector keeps orchestration, artifacts, and quality gates while the external agent owns model routing.",
   },
 ]
 const visualProviderOptions = [
@@ -203,7 +277,7 @@ function estimateRunDifficulty(brief = "", settings = {}) {
     score += 0.45
     reasons.push("需求约束较长")
   }
-  if (/最近|最新|冲突|新闻|上网|搜索|source|citation|真实|照片|素材|马斯克|奥特曼|openai|竞争|对比/i.test(text)) {
+  if (/最近|最新|冲突|新闻|上网|搜索|source|citation|真实|照片|素材|竞争|对比|case|trial|governance/i.test(text)) {
     score += 0.8
     reasons.push("需要资料/真实素材核验")
   }
@@ -229,7 +303,7 @@ function estimateRunDifficulty(brief = "", settings = {}) {
     2: "标准",
     3: "复杂",
     4: "高难",
-    5: "竞赛级",
+    5: "精修",
   }
   const multiplier = difficultyMultipliers[level] ?? 1.35
   const estimatedTotalTokens = Math.round(
@@ -389,7 +463,7 @@ const artifactTemplates = {
   task_graph: ["任务图与成功标准", "json", "Producer 已把 brief 拆成流水线、Agent、质量门和 patch loop。"],
   user_preferences: ["用户偏好画像", "json", "Research 固化目标受众、平台规格、画幅、时长和素材限制。"],
   research_pack: ["研究与选题包", "json", "Research 收集资料、来源、关键事实、风险标注，并锁定叙事角度。"],
-  topic_scorecard: ["选题评分", "json", "Research 评估角度、标题、叙事钩子和制作风险。"],
+  topic_scorecard: ["选题判断", "json", "Research 评估角度、标题、叙事钩子和制作风险。"],
   script: ["旁白与字幕脚本", "md", "Story Director 写出按时间切分的旁白、字幕、字幕安全区和引用绑定。"],
   caption_styleguide: ["字幕样式规范", "json", "Story Director 锁定字幕安全区、分行、字号、强调词和遮挡检查。"],
   shotlist: ["导演分镜与动效", "json", "Director 生成镜头语言、转场、节奏、动效和字幕画面层级。"],
@@ -509,6 +583,76 @@ function randomId(prefix) {
 
 function sha256Base64Url(value) {
   return createHash("sha256").update(value).digest("base64url")
+}
+
+const encryptedStateSecretAlgorithm = "aes-256-gcm"
+const encryptedStateSecretVersion = 1
+const openAiSecretFields = ["accessToken", "refreshToken", "idToken"]
+
+function stateEncryptionKey() {
+  return createHash("sha256")
+    .update("AutoDirector local OAuth state v1")
+    .update("\0")
+    .update(stateDir)
+    .update("\0")
+    .update(homedir())
+    .digest()
+}
+
+function encryptStateSecret(value) {
+  if (!value || (typeof value === "object" && value.encrypted === true)) return value
+  const iv = randomBytes(12)
+  const cipher = createCipheriv(encryptedStateSecretAlgorithm, stateEncryptionKey(), iv)
+  const ciphertext = Buffer.concat([cipher.update(String(value), "utf8"), cipher.final()])
+  return {
+    encrypted: true,
+    algorithm: encryptedStateSecretAlgorithm,
+    version: encryptedStateSecretVersion,
+    iv: iv.toString("base64url"),
+    tag: cipher.getAuthTag().toString("base64url"),
+    value: ciphertext.toString("base64url"),
+  }
+}
+
+function decryptStateSecret(value) {
+  if (!value || typeof value !== "object" || value.encrypted !== true) return value
+  if (value.algorithm !== encryptedStateSecretAlgorithm || value.version !== encryptedStateSecretVersion) return null
+  try {
+    const decipher = createDecipheriv(encryptedStateSecretAlgorithm, stateEncryptionKey(), Buffer.from(value.iv, "base64url"))
+    decipher.setAuthTag(Buffer.from(value.tag, "base64url"))
+    return Buffer.concat([
+      decipher.update(Buffer.from(value.value, "base64url")),
+      decipher.final(),
+    ]).toString("utf8")
+  } catch {
+    return null
+  }
+}
+
+function cloneOpenAiAccountForDisk(account) {
+  if (!account) return null
+  const clone = { ...account }
+  for (const field of openAiSecretFields) clone[field] = encryptStateSecret(clone[field])
+  return clone
+}
+
+function hydrateOpenAiAccountFromDisk(account) {
+  if (!account) return null
+  const clone = { ...account }
+  for (const field of openAiSecretFields) clone[field] = decryptStateSecret(clone[field])
+  return clone
+}
+
+function cloneStateForDisk(nextState) {
+  const clone = JSON.parse(JSON.stringify(nextState))
+  clone.openaiAccount = cloneOpenAiAccountForDisk(clone.openaiAccount)
+  return clone
+}
+
+function hydrateStateFromDisk(persisted) {
+  const hydrated = { ...defaultState(), ...persisted }
+  hydrated.openaiAccount = hydrateOpenAiAccountFromDisk(hydrated.openaiAccount)
+  return hydrated
 }
 
 function generateOpenAiCodeVerifier() {
@@ -672,7 +816,7 @@ function producerSystemInstructions() {
     "当前阶段只是 intake：你可以澄清需求、判断是否已经能开始制作、指出还缺什么；没收到用户明确 Start production 之前，不要声称已经派发 Agent。",
     "回复要短、自然、像真正的制片主任：中文优先，最多 2-4 句。",
     "如果用户只是打招呼或测试，就正常回应；如果用户给了视频需求，就帮他把方向收敛成可执行 brief，并说明下一步需要他补充或可以开工。",
-    "AutoDirector 的核心团队只有 7 个持久 Agent：Producer、Research、Story Director、Asset、Video Engineer、Render、Quality Gate。不要再提 14 个岗位或一堆虚拟角色。",
+    "AutoDirector 的核心生产链路只有 7 个 Agent：Producer、Research、Story Director、Asset、Video Engineer、Render、Quality Gate；旁路还有 Recorder 记录交接和可复用经验。对外表达为 7 个生产 Agent + Recorder，共 8 个持久岗位。不要再提 14 个岗位或一堆虚拟角色。",
     "Story Director 同时负责脚本、字幕、分镜和动效意图；Asset 同时负责图片、真实素材、音乐和音效计划；Video Engineer 同时负责 runtime_plan 和视频工程实现。",
     "当提到素材、图片、音乐、事实核查时，要明确这些会在开工后交给对应 Agent 通过 Browser Use、tool_search、imagegen 或 artifact 流水线处理。",
     "如果用户提到本地网易云音乐、.ncm 或本地曲库，记录为可用但需审计的背景音乐来源：必须走 ncm-to-mp3 dry-run/manifest 转换，Sound 先看 metadata/最好试听，不能随机挑歌；Render 只能接转换后的音频路径，Quality Gate 要检查证据链。",
@@ -698,7 +842,7 @@ function buildProducerChatPayload(body = {}) {
   const input = hasLatest ? history : history.concat({ role: "user", content: [{ type: "input_text", text }] })
   const producerPolicy = state.settings.modelPolicy?.producer ?? agentModelPolicy.producer
   return {
-    model: producerPolicy.model || "gpt-5.5",
+    model: producerPolicy.model || defaultCodexModel,
     instructions: producerSystemInstructions(),
     input,
     reasoning: { effort: normalizeThinkingLevel(producerPolicy.thinkingLevel) },
@@ -765,9 +909,210 @@ function parseResponsesStream(raw) {
   return (completed || chunks.join("")).trim()
 }
 
+function normalizeAdapterBaseUrl(value) {
+  return String(value ?? "").trim().replace(/\/+$/, "")
+}
+
+function selectedModelProvider() {
+  return state.settings.modelProvider ?? (state.settings.agentHost === "codex_native" ? "codex_oauth" : "openai_compatible")
+}
+
+function shouldUseExternalTextAdapter() {
+  return ["openai_api", "anthropic_api", "deepseek_api", "qwen_api", "openai_compatible"].includes(selectedModelProvider())
+}
+
+function isInternalModelAlias(model) {
+  return /^(codex-|local-tool-runner$|deterministic-recorder$|openai-default$|custom-model-id$)/.test(String(model ?? ""))
+}
+
+function adapterProviderConfig(provider, selectedModel = defaultCodexModel) {
+  const model = String(selectedModel || defaultCodexModel)
+  if (provider === "openai_api") {
+    return {
+      kind: "openai_compatible",
+      provider,
+      baseUrl: normalizeAdapterBaseUrl(process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1"),
+      apiKey: process.env.OPENAI_API_KEY,
+      model: process.env.AUTODIRECTOR_OPENAI_TEXT_MODEL ?? (isInternalModelAlias(model) ? "gpt-4o-mini" : model),
+    }
+  }
+  if (provider === "deepseek_api") {
+    return {
+      kind: "openai_compatible",
+      provider,
+      baseUrl: normalizeAdapterBaseUrl(process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com/v1"),
+      apiKey: process.env.DEEPSEEK_API_KEY,
+      model: process.env.DEEPSEEK_MODEL ?? (model.startsWith("deepseek-") ? model : "deepseek-chat"),
+    }
+  }
+  if (provider === "qwen_api") {
+    return {
+      kind: "openai_compatible",
+      provider,
+      baseUrl: normalizeAdapterBaseUrl(process.env.QWEN_BASE_URL ?? "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+      apiKey: process.env.DASHSCOPE_API_KEY ?? process.env.QWEN_API_KEY,
+      model: process.env.QWEN_MODEL ?? (model.startsWith("qwen-") ? model : "qwen-plus"),
+    }
+  }
+  if (provider === "openai_compatible") {
+    return {
+      kind: "openai_compatible",
+      provider,
+      baseUrl: normalizeAdapterBaseUrl(process.env.CUSTOM_MODEL_BASE_URL),
+      apiKey: process.env.CUSTOM_MODEL_API_KEY,
+      model: process.env.CUSTOM_MODEL_NAME ?? (isInternalModelAlias(model) ? "custom-model-id" : model),
+      apiKeyOptional: true,
+    }
+  }
+  if (provider === "anthropic_api") {
+    return {
+      kind: "anthropic",
+      provider,
+      baseUrl: normalizeAdapterBaseUrl(process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com"),
+      apiKey: process.env.ANTHROPIC_API_KEY,
+      model: process.env.ANTHROPIC_MODEL ?? (model.startsWith("claude-") ? model : "claude-sonnet"),
+    }
+  }
+  return null
+}
+
+function assertAdapterConfig(config) {
+  if (!config?.baseUrl) {
+    const error = new Error(`${config?.provider ?? "model_provider"} 缺少 endpoint 配置。`)
+    error.status = 400
+    error.code = "model_endpoint_required"
+    throw error
+  }
+  if (!config.apiKey && !config.apiKeyOptional) {
+    const error = new Error(`${config.provider} 缺少 API key。请在本地环境变量中配置对应密钥。`)
+    error.status = 401
+    error.code = "model_api_key_required"
+    throw error
+  }
+}
+
+function responseInputToChatMessages(input = []) {
+  return input.flatMap((item) => {
+    const role = item.role === "assistant" ? "assistant" : "user"
+    const content = collectTextFromContent(item.content).join("\n").trim()
+    return content ? [{ role, content }] : []
+  })
+}
+
+function extractChatCompletionText(payload) {
+  const message = payload?.choices?.[0]?.message
+  if (typeof message?.content === "string") return message.content
+  const content = message?.content
+  if (Array.isArray(content)) return content.map((part) => part.text ?? part.content ?? "").join("")
+  if (typeof payload?.content === "string") return payload.content
+  if (Array.isArray(payload?.content)) return payload.content.map((part) => part.text ?? "").join("")
+  return extractResponsesText(payload)
+}
+
+async function callOpenAiCompatibleAdapter(config, { system, messages, model }) {
+  assertAdapterConfig(config)
+  const headers = {
+    "content-type": "application/json",
+    accept: "application/json",
+  }
+  if (config.apiKey) headers.authorization = `Bearer ${config.apiKey}`
+  const response = await fetchWithTimeout(`${config.baseUrl}/chat/completions`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model: model ?? config.model,
+      messages: [
+        ...(system ? [{ role: "system", content: system }] : []),
+        ...messages,
+      ],
+      temperature: 0.4,
+      stream: false,
+    }),
+  }, 120_000)
+  const raw = await responseTextWithTimeout(response, 120_000)
+  if (!response.ok) {
+    const error = new Error(`${config.provider} adapter failed: ${response.status} ${response.statusText} ${redactSecret(raw).slice(0, 600)}`)
+    error.status = response.status
+    error.code = "model_adapter_failed"
+    throw error
+  }
+  return extractChatCompletionText(JSON.parse(raw)).trim()
+}
+
+async function callAnthropicAdapter(config, { system, messages, model }) {
+  assertAdapterConfig(config)
+  const response = await fetchWithTimeout(`${config.baseUrl}/v1/messages`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json",
+      "x-api-key": config.apiKey,
+      "anthropic-version": process.env.ANTHROPIC_VERSION ?? "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: model ?? config.model,
+      system,
+      messages: messages.map((message) => ({
+        role: message.role === "assistant" ? "assistant" : "user",
+        content: message.content,
+      })),
+      max_tokens: 2000,
+      temperature: 0.4,
+    }),
+  }, 120_000)
+  const raw = await responseTextWithTimeout(response, 120_000)
+  if (!response.ok) {
+    const error = new Error(`${config.provider} adapter failed: ${response.status} ${response.statusText} ${redactSecret(raw).slice(0, 600)}`)
+    error.status = response.status
+    error.code = "model_adapter_failed"
+    throw error
+  }
+  return extractChatCompletionText(JSON.parse(raw)).trim()
+}
+
+async function callExternalTextAdapter({ system, messages, selectedModel }) {
+  const provider = selectedModelProvider()
+  const config = adapterProviderConfig(provider, selectedModel)
+  if (!config) {
+    const error = new Error(`${provider} 需要外部 Agent/MCP 承载，当前后端没有直接文本 adapter。`)
+    error.status = 400
+    error.code = "model_provider_not_directly_supported"
+    throw error
+  }
+  const text = config.kind === "anthropic"
+    ? await callAnthropicAdapter(config, { system, messages, model: config.model })
+    : await callOpenAiCompatibleAdapter(config, { system, messages, model: config.model })
+  if (!text) {
+    const error = new Error(`${provider} adapter 返回了空消息。`)
+    error.status = 502
+    error.code = "empty_model_response"
+    throw error
+  }
+  return { text, provider, model: config.model }
+}
+
 async function callProducerChatModel(body = {}) {
   if (normalizeExecutionMode(state.settings.executionMode) === "codex_native" || state.settings.agentHost === "codex_native" || state.settings.agentHost === "codex_cli") {
     return await codexNativeRuntime().runProducerTurn(body)
+  }
+  const payload = buildProducerChatPayload(body)
+  if (shouldUseExternalTextAdapter()) {
+    const result = await callExternalTextAdapter({
+      system: payload.instructions,
+      messages: responseInputToChatMessages(payload.input),
+      selectedModel: payload.model,
+    })
+    return {
+      message: {
+        id: `producer_${Date.now()}`,
+        role: "producer",
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        body: result.text,
+        model: result.model,
+        thinkingLevel: state.settings.modelPolicy?.producer?.thinkingLabel ?? state.settings.modelPolicy?.producer?.thinkingLevel ?? "high",
+        source: result.provider,
+      },
+    }
   }
   const account = await refreshOpenAiTokenIfNeeded()
   if (!account?.accessToken) {
@@ -777,7 +1122,6 @@ async function callProducerChatModel(body = {}) {
     throw error
   }
 
-  const payload = buildProducerChatPayload(body)
   const headers = {
     "content-type": "application/json",
     accept: "text/event-stream",
@@ -894,6 +1238,7 @@ function skillPathsForAgent(agentId) {
     asset: "visual-imagegen",
     programmer: "builder",
     quality: "quality-gate",
+    recorder: "recorder",
   }
   const pluginSkill = pluginMap[agentId]
     ? join(rootDir, "plugins", "autodirector-codex", "skills", pluginMap[agentId], "SKILL.md")
@@ -951,7 +1296,15 @@ function skillPathsForAgent(agentId) {
     addDoc("tts-quality")
     addDoc("hyperframes-cinema")
   }
-  const hyperframesSkillDir = resolve(rootDir, "..", "..", ".codex", "plugins", "cache", "openai-curated", "hyperframes", "3c463363", "skills")
+  if (agentId === "recorder") {
+    addDoc("recorder")
+    addDoc("producer")
+    addDoc("quality-gate")
+    addDoc("voice-screen-sync")
+    addDoc("visual-composition")
+    addDoc("tts-quality")
+  }
+  const hyperframesSkillDir = resolveHyperframesSkillDir()
   if (agentId === "programmer" || agentId === "quality" || agentId === "director") {
     add(join(hyperframesSkillDir, "hyperframes", "SKILL.md"))
     add(join(hyperframesSkillDir, "hyperframes-cli", "SKILL.md"))
@@ -961,6 +1314,21 @@ function skillPathsForAgent(agentId) {
     add(join(hyperframesSkillDir, "website-to-hyperframes", "SKILL.md"))
   }
   return paths
+}
+
+function resolveHyperframesSkillDir() {
+  const configured = process.env.AUTODIRECTOR_HYPERFRAMES_SKILL_DIR
+  if (configured && existsSync(configured)) return resolve(configured)
+  const cacheRoot = join(homedir(), ".codex", "plugins", "cache", "openai-curated", "hyperframes")
+  try {
+    const candidates = readdirSync(cacheRoot)
+      .map((entry) => join(cacheRoot, entry, "skills"))
+      .filter((candidate) => existsSync(candidate) && statSync(candidate).isDirectory())
+      .sort()
+    return candidates.at(-1) ?? join(cacheRoot, "skills")
+  } catch {
+    return join(cacheRoot, "skills")
+  }
 }
 
 function codexWorkerPrompt(run, task, worker) {
@@ -1022,8 +1390,13 @@ function sourceProjectDirForRun(run) {
     typeof content === "object" && content
       ? content.project_path ?? content.path ?? content.output_dir ?? content.source_project
       : null
+  const safeProjectPath = (value) => {
+    if (!value) return null
+    const candidate = resolve(rootDir, String(value))
+    return isPathInsideDir(candidate, rootDir) ? candidate : null
+  }
   const candidates = [
-    projectPath ? resolve(rootDir, String(projectPath)) : null,
+    safeProjectPath(projectPath),
     join(runsDir, run.id, "agent-artifacts", "source_project"),
   ].filter(Boolean)
   return candidates.find((candidate) => existsSync(candidate) && statSync(candidate).isDirectory()) ?? null
@@ -1198,6 +1571,45 @@ function agentModelInstructions(worker, task) {
 }
 
 async function callAgentArtifactModel(run, task, worker) {
+  const instructions = agentTaskInstructions(run, task, worker)
+  const policy = state.settings.modelPolicy?.[worker.id] ?? agentModelPolicy[worker.id] ?? agentModelPolicy.producer
+  const selectedModel = String(policy.model ?? worker.model ?? defaultCodexModel)
+  if (shouldUseExternalTextAdapter()) {
+    const result = await callExternalTextAdapter({
+      system: agentModelInstructions(worker, task),
+      messages: [
+        {
+          role: "user",
+          content: JSON.stringify({
+            runId: run.id,
+            taskId: task.id,
+            currentDate: new Date().toISOString(),
+            task: instructions,
+          }, null, 2),
+        },
+      ],
+      selectedModel,
+    })
+    const answer = result.text.trim()
+    const parsed = parseJsonFromModelText(answer)
+    const template = artifactTemplates[task.outputId] ?? [task.outputId, "json", "Agent artifact."]
+    return parsed && typeof parsed === "object"
+      ? {
+          title: parsed.title ?? template[0],
+          type: parsed.type ?? template[1],
+          summary: parsed.summary ?? template[2],
+          content: parsed.content ?? answer,
+          checks: Array.isArray(parsed.checks) ? parsed.checks : [`generated by ${result.provider} adapter`, "handoff ready"],
+        }
+      : {
+          title: template[0],
+          type: template[1],
+          summary: answer.slice(0, 220) || template[2],
+          content: answer || template[2],
+          checks: [`generated by ${result.provider} adapter`, "handoff ready"],
+        }
+  }
+
   const account = await refreshOpenAiTokenIfNeeded()
   if (!account?.accessToken) {
     const error = new Error("OpenAI / Codex OAuth 未连接，Agent 不能真实执行。")
@@ -1206,10 +1618,11 @@ async function callAgentArtifactModel(run, task, worker) {
     throw error
   }
 
-  const instructions = agentTaskInstructions(run, task, worker)
-  const policy = state.settings.modelPolicy?.[worker.id] ?? agentModelPolicy[worker.id] ?? agentModelPolicy.producer
+  const apiModel = selectedModel.startsWith("codex-")
+    ? process.env.AUTODIRECTOR_OPENAI_TEXT_MODEL ?? "gpt-4o-mini"
+    : selectedModel
   const payload = {
-    model: String(policy.model ?? worker.model ?? "gpt-5.5").startsWith("gpt") ? String(policy.model ?? worker.model) : "gpt-5.5",
+    model: apiModel,
     instructions: agentModelInstructions(worker, task),
     input: [
       {
@@ -1302,7 +1715,7 @@ function scheduleAgentModelTask(runId, taskId) {
       task.modelAttempts = Number(task.modelAttempts ?? 0) + 1
       run.logs.push(`[agent] ${worker.shortName} Agent running on ${worker.model} for ${task.outputId}`)
       saveState()
-      if (worker.model === "tool-runner") {
+    if (worker.model === localRenderModel) {
         const artifact =
           task.outputId === "render_report"
             ? await runLocalRenderArtifact(run, task, worker)
@@ -1311,11 +1724,11 @@ function scheduleAgentModelTask(runId, taskId) {
           taskId: task.id,
           agentId: task.agentId,
           status: artifact.status === "blocked" ? "blocked" : "done",
-          submittedBy: `${worker.shortName} local tool-runner`,
+          submittedBy: `${worker.shortName} local tool runner`,
           artifact: {
             ...artifact,
-            summary: `${artifact.summary} 本步骤由本地 tool-runner 执行，不走 GPT 模型。`,
-            checks: [...(artifact.checks ?? []), "local tool-runner path", "no GPT fallback"],
+            summary: `${artifact.summary} 本步骤由本地工具执行，不走云端文本模型。`,
+            checks: [...(artifact.checks ?? []), "local tool runner path", "no cloud text model fallback"],
           },
         })
         pushEvent(artifact.status === "blocked" ? "agent.tool_runner.blocked" : "agent.tool_runner.completed", { runId, stepId: task.stepId, agentId: task.agentId, outputId: task.outputId, model: worker.model })
@@ -1526,7 +1939,7 @@ function defaultWorkers() {
         id,
         shortName,
         role,
-        model: agentModelPolicy[id]?.model ?? "gpt-5.5",
+        model: agentModelPolicy[id]?.model ?? defaultCodexModel,
         thinkingLevel: agentModelPolicy[id]?.thinkingLevel ?? "medium",
         thinkingLabel: agentModelPolicy[id]?.thinkingLabel ?? "medium",
         capabilities: agentModelPolicy[id]?.capabilities ?? [],
@@ -1553,6 +1966,7 @@ function defaultState() {
       layoutMode: "simple",
       executionMode: "codex_native",
       agentHost: "codex_native",
+      modelProvider: "codex_oauth",
       visualProvider: "codex_imagegen",
       updatedAt: new Date().toISOString(),
     },
@@ -1582,7 +1996,7 @@ function loadState() {
   }
 
   try {
-    return { ...defaultState(), ...JSON.parse(readFileSync(statePath, "utf8")) }
+    return hydrateStateFromDisk(JSON.parse(readFileSync(statePath, "utf8")))
   } catch {
     const fresh = defaultState()
     saveState(fresh)
@@ -1593,7 +2007,7 @@ function loadState() {
 function saveState(nextState = state) {
   if (!existsSync(stateDir)) mkdirSync(stateDir, { recursive: true })
   const tempPath = `${statePath}.${process.pid}.${Date.now()}.tmp`
-  writeFileSync(tempPath, `${JSON.stringify(nextState, null, 2)}\n`)
+  writeFileSync(tempPath, `${JSON.stringify(cloneStateForDisk(nextState), null, 2)}\n`)
   renameSync(tempPath, statePath)
 }
 
@@ -1692,6 +2106,270 @@ function markImagegenRepairNeeded(run, blockedImagegenRequest) {
 function writeJson(filePath, value) {
   ensureDir(dirname(filePath))
   writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`)
+}
+
+function safeSlug(value, fallback = "autodirector-skill") {
+  return String(value || fallback)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64) || fallback
+}
+
+function recorderDirFor(run) {
+  return join(runsDir, run.id, "recorder")
+}
+
+function recorderPathsFor(run) {
+  const dir = recorderDirFor(run)
+  return {
+    dir,
+    log: join(dir, "recorder_log.jsonl"),
+    summary: join(dir, "recorder_summary.md"),
+    suggestions: join(dir, "skill_suggestions.json"),
+    generatedSkills: join(dir, "generated_skills"),
+  }
+}
+
+function publicRecorderPaths(run) {
+  const paths = recorderPathsFor(run)
+  return Object.fromEntries(
+    Object.entries(paths).map(([key, value]) => [key, relative(rootDir, value).replaceAll("\\", "/")])
+  )
+}
+
+function briefSkillSeed(run) {
+  const text = String(run.brief || run.title || "autodirector production")
+  const ascii = safeSlug(text, "production-run")
+  return ascii.length >= 12 ? ascii : "production-run"
+}
+
+function ensureRecorderState(run) {
+  if (!run.recorder || typeof run.recorder !== "object") {
+    run.recorder = {
+      status: "active",
+      agentId: "recorder",
+      entries: [],
+      generatedAt: new Date().toISOString(),
+    }
+  }
+  if (!Array.isArray(run.recorder.entries)) run.recorder.entries = []
+  run.recorder.paths = publicRecorderPaths(run)
+  run.recorder.updatedAt = run.recorder.updatedAt ?? run.recorder.generatedAt ?? new Date().toISOString()
+  return run.recorder
+}
+
+function compactRecorderPayload(payload = {}) {
+  const compact = {}
+  for (const [key, value] of Object.entries(payload ?? {})) {
+    if (value === undefined || typeof value === "function") continue
+    if (typeof value === "string") compact[key] = value.length > 900 ? `${value.slice(0, 900)}...` : value
+    else if (Array.isArray(value)) compact[key] = value.slice(0, 24)
+    else if (value && typeof value === "object") {
+      compact[key] = JSON.parse(JSON.stringify(value, (nestedKey, nestedValue) => {
+        if (typeof nestedValue === "string" && nestedValue.length > 900) return `${nestedValue.slice(0, 900)}...`
+        if (Array.isArray(nestedValue) && nestedValue.length > 24) return nestedValue.slice(0, 24)
+        return nestedValue
+      }))
+    } else compact[key] = value
+  }
+  return compact
+}
+
+function recorderSafePath(run, value) {
+  if (!value) return value
+  const text = String(value)
+  const marker = `${run.id}/`
+  return text.includes(marker) ? marker + text.split(marker).slice(1).join(marker) : text.split("/").at(-1)
+}
+
+function recorderSuggestionsFor(run) {
+  const artifacts = new Set((run.artifacts ?? []).map((artifact) => artifact.id))
+  const entries = run.recorder?.entries ?? []
+  const suggestions = [
+    {
+      id: "run-replay-playbook",
+      title: "Run Replay Playbook",
+      trigger: "Use when a future video brief resembles this run or needs the same artifact order.",
+      rationale: "Captures the concrete handoff order, outputs, and package files that worked in this run.",
+      evidence: ["recorder_log.jsonl", "recorder_summary.md"],
+    },
+    {
+      id: "agent-handoff-checklist",
+      title: "Agent Handoff Checklist",
+      trigger: "Use when Producer needs to dispatch Agents without losing upstream artifact context.",
+      rationale: "The run record shows which upstream artifacts each Agent consumed and what the next Agent needed.",
+      evidence: ["task_graph", ...Array.from(artifacts).slice(0, 12)],
+    },
+  ]
+  if (artifacts.has("asset_manifest") || artifacts.has("imagegen_prompt_pack") || run.imageAssetDir) {
+    suggestions.push({
+      id: "asset-provenance-gate",
+      title: "Asset Provenance Gate",
+      trigger: "Use when a run needs imagegen, public-source visuals, music rights, or citation tracking.",
+      rationale: "Turns the Asset Agent's files, prompts, and source-risk notes into a reusable preflight skill.",
+      evidence: ["asset_manifest", "imagegen_prompt_pack", "citations.md"],
+    })
+  }
+  if (artifacts.has("render_report") || artifacts.has("source_project") || run.package?.files?.includes("source_project.zip")) {
+    suggestions.push({
+      id: "render-package-readiness",
+      title: "Render Package Readiness",
+      trigger: "Use before exposing a final package or downloadable video.",
+      rationale: "Collects the render/package checks that keep final.mp4, source_project, logs, and quality files aligned.",
+      evidence: ["render_report", "source_project", "quality_report", "run_log.jsonl"],
+    })
+  }
+  if (run.package?.status === "blocked" || entries.some((entry) => String(entry.type).includes("blocked") || entry.payload?.blocked)) {
+    suggestions.push({
+      id: "narrow-repair-loop",
+      title: "Narrow Repair Loop",
+      trigger: "Use when Quality Gate or imagegen checks fail and the run should patch one owner instead of restarting.",
+      rationale: "Preserves the smallest failed owner, blocker reason, and next task so future Agents can recover cleanly.",
+      evidence: ["blockedReason", "currentTask", "quality_report"],
+    })
+  }
+  if ((run.brief ?? "").match(/voice|tts|旁白|字幕|sync|同步/i) || artifacts.has("script") || artifacts.has("shotlist")) {
+    suggestions.push({
+      id: "voice-screen-memory",
+      title: "Voice Screen Memory",
+      trigger: "Use for narrated videos where every spoken beat needs matching screen evidence.",
+      rationale: "Keeps narration, caption, shotlist, and sync expectations tied together for later runs.",
+      evidence: ["script", "shotlist", "voice_screen_map.json", "sync_quality.json"],
+    })
+  }
+  return suggestions
+}
+
+function recorderSummaryFor(run, suggestions) {
+  const entries = run.recorder?.entries ?? []
+  const artifactIds = (run.artifacts ?? []).map((artifact) => artifact.id)
+  const latest = entries.slice(-12)
+  return `# Recorder Summary
+
+Run: ${run.id}
+Brief: ${run.brief || "(empty)"}
+Status: ${run.status}
+Completed steps: ${run.completedSteps}/${pipeline.length}
+Package: ${run.package?.status ?? "not packaged"}
+
+## Latest Work
+
+${latest.map((entry) => `- ${entry.at} ${entry.type}: ${entry.summary}`).join("\n") || "- No recorded work yet."}
+
+## Artifacts Seen
+
+${artifactIds.map((id) => `- ${id}`).join("\n") || "- None yet."}
+
+## Skill Drafts
+
+${suggestions.map((item) => `- ${item.id}: ${item.rationale}`).join("\n")}
+`
+}
+
+function recorderSkillMarkdown(run, suggestion) {
+  const name = `autodirector-${suggestion.id}`
+  return `---
+name: ${name}
+description: ${suggestion.trigger} Generated by AutoDirector Recorder from run ${run.id}; use when a future run needs the same stable production lesson.
+---
+
+# ${suggestion.title}
+
+## Why This Exists
+
+${suggestion.rationale}
+
+## Stable Procedure
+
+1. Read \`recorder_summary.md\` first to understand the run context and outcome.
+2. Inspect \`recorder_log.jsonl\` for the exact Agent handoffs, blockers, and package events.
+3. Reuse only the workflow lesson; do not copy topic facts, sources, or creative claims without refreshing them.
+4. Convert the lesson into the next run's Producer instructions, success criteria, or Quality Gate checks.
+5. If the current run differs from ${run.id}, mark assumptions and route uncertain work back to the responsible Agent.
+
+## Evidence To Check
+
+${suggestion.evidence.map((item) => `- ${item}`).join("\n")}
+
+## Output
+
+Return a short patch to the next run's \`task_graph\`, \`success_criteria\`, or Agent instructions. Include the evidence file that justified each rule.
+`
+}
+
+function writeRecorderFiles(run) {
+  const recorder = ensureRecorderState(run)
+  const paths = recorderPathsFor(run)
+  ensureDir(paths.dir)
+  ensureDir(paths.generatedSkills)
+  const suggestions = recorderSuggestionsFor(run)
+  recorder.suggestions = suggestions
+  recorder.entriesCount = recorder.entries.length
+  recorder.suggestionsCount = suggestions.length
+  recorder.updatedAt = new Date().toISOString()
+  writeFileSync(paths.log, `${recorder.entries.map((entry) => JSON.stringify(entry)).join("\n")}${recorder.entries.length ? "\n" : ""}`)
+  writeFileSync(paths.summary, recorderSummaryFor(run, suggestions))
+  writeJson(paths.suggestions, { runId: run.id, generatedAt: recorder.updatedAt, suggestions })
+  rmSync(paths.generatedSkills, { recursive: true, force: true })
+  ensureDir(paths.generatedSkills)
+  for (const suggestion of suggestions) {
+    const skillDir = join(paths.generatedSkills, safeSlug(suggestion.id))
+    ensureDir(skillDir)
+    writeFileSync(join(skillDir, "SKILL.md"), recorderSkillMarkdown(run, suggestion))
+  }
+  return recorder
+}
+
+function writeRecorderPackageFiles(run, packageDir) {
+  const recorder = writeRecorderFiles(run)
+  const packageSkillsDir = join(packageDir, "generated_skills")
+  const suggestions = recorderSuggestionsFor(run)
+  writeFileSync(join(packageDir, "recorder_log.jsonl"), `${recorder.entries.map((entry) => JSON.stringify(entry)).join("\n")}${recorder.entries.length ? "\n" : ""}`)
+  writeFileSync(join(packageDir, "recorder_summary.md"), recorderSummaryFor(run, suggestions))
+  writeJson(join(packageDir, "skill_suggestions.json"), { runId: run.id, generatedAt: new Date().toISOString(), suggestions })
+  rmSync(packageSkillsDir, { recursive: true, force: true })
+  ensureDir(packageSkillsDir)
+  for (const suggestion of suggestions) {
+    const skillDir = join(packageSkillsDir, safeSlug(suggestion.id))
+    ensureDir(skillDir)
+    writeFileSync(join(skillDir, "SKILL.md"), recorderSkillMarkdown(run, suggestion))
+  }
+  return recorder
+}
+
+function recordRunWork(run, type, payload = {}) {
+  if (!run) return null
+  try {
+    const recorder = ensureRecorderState(run)
+    const now = new Date().toISOString()
+    const compactPayload = compactRecorderPayload(payload)
+    const entry = {
+      id: `rec_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      at: now,
+      type,
+      summary: String(payload.summary ?? type),
+      agentId: payload.agentId ?? null,
+      taskId: payload.taskId ?? null,
+      artifactId: payload.artifactId ?? payload.outputId ?? null,
+      payload: compactPayload,
+    }
+    recorder.entries.push(entry)
+    recorder.updatedAt = now
+    const worker = state.workers?.recorder
+    if (worker) {
+      worker.status = "done"
+      worker.lastActive = now
+      if (entry.artifactId && !worker.artifacts.includes(entry.artifactId)) worker.artifacts.push(entry.artifactId)
+      worker.outbox = worker.outbox.slice(-40).concat(entry.id)
+    }
+    writeRecorderFiles(run)
+    return entry
+  } catch (error) {
+    run.logs = run.logs ?? []
+    run.logs.push(`[recorder] skipped ${type}: ${error instanceof Error ? error.message : String(error)}`)
+    return null
+  }
 }
 
 function runCommand(command, args, options = {}) {
@@ -1799,6 +2477,7 @@ state.settings.modelPolicy = mergeModelPolicy(state.settings.modelPolicy)
 state.settings.imageModel = state.settings.imageModel ?? defaultImageModel
 state.settings.executionMode = normalizeExecutionMode(state.settings.executionMode ?? "codex_native")
 state.settings.agentHost = state.settings.agentHost === "codex_cli" ? "codex_native" : state.settings.agentHost ?? (state.settings.executionMode === "codex_native" ? "codex_native" : "codex_plugin")
+state.settings.modelProvider = modelProviderOptions.some((option) => option.id === state.settings.modelProvider) ? state.settings.modelProvider : (state.settings.agentHost === "codex_native" ? "codex_oauth" : "openai_compatible")
 if (state.settings.executionMode === "oauth_agents" && state.settings.agentHost === "codex_plugin") {
   state.settings.executionMode = "codex_native"
   state.settings.agentHost = "codex_native"
@@ -1830,7 +2509,7 @@ function applyModelPolicyToWorkers() {
   state.settings.modelPolicy = mergeModelPolicy(state.settings.modelPolicy)
   for (const [id, policy] of Object.entries(state.settings.modelPolicy)) {
     if (!state.workers[id]) continue
-    state.workers[id].model = policy.model ?? state.workers[id].model ?? "gpt-5.5"
+    state.workers[id].model = policy.model ?? state.workers[id].model ?? defaultCodexModel
     state.workers[id].thinkingLevel = policy.thinkingLevel ?? state.workers[id].thinkingLevel ?? "medium"
     state.workers[id].thinkingLabel = policy.thinkingLabel ?? state.workers[id].thinkingLevel
     state.workers[id].capabilities = policy.capabilities ?? state.workers[id].capabilities ?? []
@@ -1883,22 +2562,28 @@ function publicState() {
 function runtimeCapabilities() {
   const agentHost = state.settings.agentHost === "codex_cli" ? "codex_native" : state.settings.agentHost ?? "codex_native"
   const visualProvider = state.settings.visualProvider ?? "codex_imagegen"
+  const modelProvider = modelProviderOptions.some((item) => item.id === state.settings.modelProvider) ? state.settings.modelProvider : "codex_oauth"
   const host = agentHostOptions.find((item) => item.id === agentHost) ?? agentHostOptions[0]
   const visual = visualProviderOptions.find((item) => item.id === visualProvider) ?? visualProviderOptions[0]
+  const provider = modelProviderOptions.find((item) => item.id === modelProvider) ?? modelProviderOptions[0]
   const codexNative = codexNativeRuntimeStatus()
   const canGenerateImages = Boolean(host.imagegen || visual.canGenerate || visualProvider === "user_upload")
   return {
     selected: {
       agentHost,
+      modelProvider,
       visualProvider,
       imageModel: state.settings.imageModel ?? defaultImageModel,
       defaultRuntime: state.settings.defaultRuntime,
       executionMode: normalizeExecutionMode(state.settings.executionMode),
     },
     agentHosts: agentHostOptions,
+    modelProviders: modelProviderOptions,
     visualProviders: visualProviderOptions,
     codexNative,
     matrix: {
+      textModel: provider.keyless === true || modelProvider === "custom_mcp" ? "available_or_external" : "requires_local_env",
+      endpoint: provider.endpoint,
       imagegen: canGenerateImages && (agentHost !== "codex_native" || codexNative.imageGeneration) ? "available" : "blocked_until_provider_registered",
       research: host.webSearch === false ? "manual_or_external" : "available",
       videoBuild: host.codeExecution === false ? "manual_or_external" : "available",
@@ -2047,6 +2732,13 @@ function createRun(brief = "") {
     logs: [],
   }
   ensureTokenTelemetry(run)
+  recordRunWork(run, "run_created", {
+    summary: "Recorder created durable run memory.",
+    agentId: "recorder",
+    brief,
+    runtime: run.runtime,
+    executionMode: run.executionMode,
+  })
   state.runs[runId] = run
   state.activeRunId = runId
   saveState()
@@ -2358,6 +3050,17 @@ function completeAgentTask(runId, body = {}) {
 
   run.logs.push(`[artifact] ${worker.shortName} submitted ${artifact.id}${blocked ? " (blocked)" : ""}`)
   run.artifacts = run.artifacts.filter((item) => item.id !== artifact.id).concat(artifact)
+  recordRunWork(run, blocked ? "artifact_blocked" : "artifact_submitted", {
+    summary: `${worker.shortName} submitted ${artifact.id}${blocked ? " with blocker" : ""}.`,
+    agentId: task.agentId,
+    taskId: task.id,
+    stepId: task.stepId,
+    outputId: task.outputId,
+    artifactId: artifact.id,
+    artifactPath: recorderSafePath(run, artifact.path),
+    blocked,
+    checks: artifact.checks ?? artifact.qualityChecks ?? [],
+  })
   worker.artifacts.push(artifact.id)
   worker.outbox.push(artifact.id)
   worker.currentTaskId = null
@@ -2435,6 +3138,15 @@ function dispatchNext(runId, options = {}) {
   worker.lastActive = now
   run.selectedAgentId = agentId
   run.logs.push(`[dispatch] Producer -> ${worker.shortName}: ${label} (${worker.model}, thinking=${worker.thinkingLabel ?? worker.thinkingLevel})`)
+  recordRunWork(run, "task_started", {
+    summary: `${worker.shortName} started ${outputId}.`,
+    agentId,
+    taskId: task.id,
+    stepId,
+    outputId,
+    label,
+    inputArtifactIds: task.inputArtifactIds,
+  })
   pushEvent("task.started", { runId, stepId, agentId, outputId, label })
   pushEvent("agent.thinking", { runId, stepId, agentId, outputId, label })
   pushEvent("handoff.started", { runId, from: "producer", agentId, outputId, label })
@@ -2621,185 +3333,13 @@ function legacyDemoAssets(run, scenes = []) {
 
 function briefKind(run) {
   const brief = run.brief || ""
-  if (/马斯克|Musk|Elon|奥特曼|Altman|OpenAI/i.test(brief)) return "musk_altman_news"
+  if (seededNewsDemoPlanForBrief(brief)) return "seeded_news_demo"
   if (/新闻|冲突|诉讼|官司|latest|recent|timeline|时间线/i.test(brief)) return "news"
   return "autodirector_demo"
 }
 
 function newsPlanFor(run) {
-  const isMuskAltman = briefKind(run) === "musk_altman_news"
-  if (!isMuskAltman) return null
-  const sharedEvidenceAssets = [
-    {
-      title: "Elon Musk public portrait evidence",
-      url: "https://upload.wikimedia.org/wikipedia/commons/3/34/Elon_Musk_Royal_Society_%28crop2%29.jpg",
-      sourcePage: "https://commons.wikimedia.org/wiki/File:Elon_Musk_Royal_Society_(crop2).jpg",
-      license: "CC BY-SA 3.0, Debbie Rowe via Wikimedia Commons",
-      purpose: "人物识别与新闻解释素材。",
-    },
-    {
-      title: "Sam Altman public portrait evidence",
-      url: "https://upload.wikimedia.org/wikipedia/commons/8/83/Sam_Altman%2C_June_2023_%28GPOABG244%29_%28cropped%29.jpeg",
-      sourcePage: "https://commons.wikimedia.org/wiki/File:Sam_Altman,_June_2023_(GPOABG244)_(cropped).jpeg",
-      license: "CC BY-SA 3.0, Amos Ben Gershom / GPO via Wikimedia Commons",
-      purpose: "人物识别与新闻解释素材。",
-    },
-    {
-      title: "Ronald V. Dellums Federal Building evidence",
-      url: "https://upload.wikimedia.org/wikipedia/commons/7/74/Ronald_Dellums_Federal_Building.jpg",
-      sourcePage: "https://commons.wikimedia.org/wiki/File:Ronald_Dellums_Federal_Building.jpg",
-      license: "CC BY-SA 3.0 via Wikimedia Commons",
-      purpose: "Oakland federal court context visual.",
-    },
-    {
-      title: "Reuters / Al Jazeera Musk Altman trial combination photo",
-      url: "https://www.aljazeera.com/wp-content/uploads/2026/04/reuters_69f261b5-1777492405.jpg?resize=1920%2C1280&quality=80",
-      sourcePage: "https://www.aljazeera.com/economy/2026/4/29/musk-accuses-altman-of-betraying-openais-nonprofit-founding-mission",
-      license: "Reuters news photo via Al Jazeera; license requires review for public redistribution",
-      purpose: "直接新闻素材主图，展示 Sam Altman 与 Elon Musk 在庭审期间的组合照片。",
-    },
-    {
-      title: "AP News OpenAI trial courthouse photo",
-      url: "https://dims.apnews.com/dims4/default/911658a/2147483647/strip/true/crop/5449x3631+0+1/resize/980x653!/quality/90/?url=https%3A%2F%2Fassets.apnews.com%2F08%2Fb0%2Fd5385e1b8bf692e6bebc68ca390c%2Ff1b963ca2ccb4d09a5383c551921c702",
-      sourcePage: "https://apnews.com/article/musk-altman-openai-nonprofit-trial-bdbe85d62c2b678458fe68148eb6fba5",
-      license: "AP news photo; license requires review for public redistribution",
-      purpose: "直接新闻素材主图，展示庭审现场/法院语境。",
-    },
-  ]
-  return {
-    kind: "musk_altman_news",
-    title: "Musk vs Altman / OpenAI conflict",
-    researchPack: {
-      topic: "Elon Musk 与 Sam Altman / OpenAI 的公开冲突",
-      verificationStatus: "seeded_with_public_sources; Research Agent should refresh before public submission",
-      sources: [
-        {
-          id: "src_ap_2026_05_01",
-          title: "Elon Musk spars with OpenAI attorney in trial over company's evolution from a nonprofit",
-          publisher: "Associated Press",
-          url: "https://apnews.com/article/bdbe85d62c2b678458fe68148eb6fba5",
-          accessed_at: "2026-05-01",
-          type: "news",
-          relevance: "Current trial framing and both sides' positions.",
-        },
-        {
-          id: "src_reuters_2026_04_28",
-          title: "OpenAI trial pitting Elon Musk against Sam Altman kicks off",
-          publisher: "Reuters",
-          url: "https://www.investing.com/news/stock-market-news/openai-trial-pitting-elon-musk-against-sam-altman-kicks-off-4640752",
-          accessed_at: "2026-05-01",
-          type: "news",
-          relevance: "Trial start, venue, and central nonprofit-to-for-profit dispute.",
-        },
-        {
-          id: "src_justia_2026_04_30",
-          title: "Musk v. Altman et al court filing",
-          publisher: "Justia / U.S. District Court",
-          url: "https://cases.justia.com/federal/district-courts/california/candce/4%3A2024cv04722/433688/203/0.pdf",
-          accessed_at: "2026-05-01",
-          type: "court_filing",
-          relevance: "Recent docket material for the live case.",
-        },
-      ],
-      requiredVerification: [
-        "Research Agent must verify current timeline with web/browser tools in a live run.",
-        "If web verification is unavailable, mark the run as demo research and Quality Gate should expose that limitation.",
-      ],
-      keyFacts: [
-        {
-          id: "fact_01",
-          claim: "2026 年 4 月底，Musk 与 OpenAI / Altman 的案件进入庭审阶段，核心围绕 OpenAI 从非营利使命到商业化结构的演变。",
-          source_ids: ["src_ap_2026_05_01", "src_reuters_2026_04_28"],
-          risk: "medium; requires current legal/news verification",
-        },
-        {
-          id: "fact_02",
-          claim: "Musk 一方长期指责 OpenAI 偏离早期非营利/开放使命。",
-          source_ids: ["src_ap_2026_05_01", "src_reuters_2026_04_28"],
-          risk: "medium; summarize allegation, do not present as court finding",
-        },
-        {
-          id: "fact_03",
-          claim: "Altman/OpenAI 一方主张商业合作和算力融资是扩展 AI 能力所需。",
-          source_ids: ["src_ap_2026_05_01"],
-          risk: "medium; summarize position, do not infer motive",
-        },
-      ],
-      sourceTasks: [
-        "Search recent court/news coverage before final public submission.",
-        "Use official court filings, OpenAI statements/blog posts, Musk/XAI statements, Reuters/AP/Bloomberg/NYT style news sources when available.",
-      ],
-    },
-    scenes: [
-      {
-        eyebrow: "马斯克 vs 奥特曼终极审判！",
-        hook: "不要 1870 亿",
-        title: "把 OpenAI 还给我",
-        body: "2026 年 4 月底，Musk 与 OpenAI / Altman 的案件在 Oakland 开庭，核心是：OpenAI 是否背离早期非营利使命。",
-        caption: "这不是口水战，是 AI 公司治理、资本与使命的正面对撞。",
-        kind: "news_context",
-        accent: "#f8de4a",
-        assetTitle: "Conflict opener",
-        assetPurpose: "建立 Musk / Altman / OpenAI 冲突语境。",
-        durationSeconds: 2.4,
-        evidenceAssets: sharedEvidenceAssets,
-      },
-      {
-        eyebrow: "Musk 一方",
-        hook: "“偷走慈善”",
-        title: "他的核心指控",
-        body: "Musk 在庭审中把诉讼讲成对慈善与公共使命的防守，称 OpenAI 的商业化方向背离最初承诺。",
-        caption: "这里只呈现庭审主张，不把任何一方说法当成判决结论。",
-        kind: "news_musk",
-        accent: "#f8de4a",
-        assetTitle: "Musk position map",
-        assetPurpose: "用导图解释 Musk 一方的主张，不用大头照占满画面。",
-        assetRisk: "中；真实新闻与人物素材必须标注来源。",
-        durationSeconds: 2.4,
-        evidenceAssets: sharedEvidenceAssets,
-      },
-      {
-        eyebrow: "Altman / OpenAI",
-        hook: "另一套叙事",
-        title: "算力、融资、扩张",
-        body: "OpenAI 一方反驳称，商业结构与合作是购买算力、吸引人才、继续推进模型能力的现实条件。",
-        caption: "争议焦点从“初心”转向“谁有资格解释初心”。",
-        kind: "news_altman",
-        accent: "#62eadc",
-        assetTitle: "Altman OpenAI position map",
-        assetPurpose: "用导图解释 Altman / OpenAI 一方的商业化与算力叙事。",
-        assetRisk: "中；真实新闻与人物素材必须标注来源。",
-        durationSeconds: 2.4,
-        evidenceAssets: sharedEvidenceAssets,
-      },
-      {
-        eyebrow: "争议焦点",
-        hook: "真正抢的",
-        title: "不是钱，是解释权",
-        body: "同一段历史，可以被讲成背离初心，也可以被讲成商业化自救。法庭要听的是协议、治理与利益边界。",
-        caption: "所以这场冲突会影响的不只是 OpenAI，而是 AI 公司的公共使命叙事。",
-        kind: "news_stakes",
-        accent: "#f8de4a",
-        assetTitle: "Governance conflict diagram",
-        assetPurpose: "用图解呈现非营利使命、营利结构、投资和控制权的拉扯。",
-        durationSeconds: 2.4,
-        evidenceAssets: sharedEvidenceAssets,
-      },
-      {
-        eyebrow: "下一步",
-        hook: "三个信号",
-        title: "法庭、监管、资本",
-        body: "接下来要看判决如何界定非营利控制、OpenAI 的结构调整，以及 AI 融资是否被重新审视。",
-        caption: "这场官司的结论，可能会重写大模型公司的治理边界。",
-        kind: "news_outlook",
-        accent: "#f8de4a",
-        assetTitle: "Next signals board",
-        assetPurpose: "收束为后续观察点。",
-        durationSeconds: 2.4,
-        evidenceAssets: sharedEvidenceAssets,
-      },
-    ],
-  }
+  return seededNewsDemoPlanForBrief(run.brief || "")
 }
 
 function sceneCardsFor(run) {
@@ -2819,7 +3359,7 @@ function sceneCardsFor(run) {
     },
     {
       eyebrow: "多 Agent 接力",
-      hook: "7 个持久 Agent 真正接力",
+      hook: "7 个生产 Agent + Recorder 真正接力",
       title: "分工交接，全程可审计",
       body: "砍掉重复岗位，只保留 Producer、Research、Director、Asset、Video Engineer、Render 和 Quality Gate。",
       caption: "Script、Caption、Motion、Sound 和 Runtime Planning 被折进核心角色，少而清楚。",
@@ -2846,7 +3386,7 @@ function sceneCardsFor(run) {
     },
     {
       eyebrow: "最终交付",
-      hook: "评委要看到完整成片证据",
+      hook: "成片、素材和质量记录要一起交付",
       title: "final.mp4、源码、素材、质量报告一起交付",
       body: "Quality Gate 不合格就只返修具体问题；通过后打包视频、工程、素材、引用和运行日志。",
       caption: "一站式生成，稳定可控，能复盘也能下载。",
@@ -2908,9 +3448,9 @@ function imagegenPromptFor(scene) {
     assets: "a clear asset pipeline diagram showing image, caption, motion, and music layers flowing into a storyboard",
     runtime: "a clear runtime planning diagram showing director plan, runtime plan, code blocks, render queue, and validation gates",
     package: "a clear final delivery diagram showing final video, source package, asset manifest, citations, quality report, and run log as organized icons",
-    news_context: "a clean news explainer title diagram about Elon Musk, Sam Altman, OpenAI, lawsuit, governance and AI mission conflict; no readable text",
-    news_musk: "a respectful news portrait/side card visual for Elon Musk's position in the OpenAI dispute; no readable text",
-    news_altman: "a respectful news portrait/side card visual for Sam Altman's/OpenAI's position in the OpenAI dispute; no readable text",
+    news_context: "a clean news explainer title diagram about two public positions, governance, capital, public mission and institutional conflict; no readable text",
+    news_position_a: "a respectful news side-card visual for the first public position in a governance dispute; no readable text",
+    news_position_b: "a respectful news side-card visual for the second public position in a governance dispute; no readable text",
     news_stakes: "a clear governance conflict diagram showing mission, nonprofit promise, commercial structure, capital, compute and control as abstract nodes; no readable text",
     news_outlook: "a clear forward-looking news board showing court, regulation and capital signals as abstract icons; no readable text",
   }
@@ -2956,15 +3496,13 @@ function structuralHeroSvg(scene, index, allEvidence = []) {
   const accent = scene.accent || "#d7f36b"
   const w = 1440
   const h = 860
-  const muskImage = allEvidence.find((asset) => /Musk|Elon/i.test(asset.title || ""))?.file
-  const altmanImage = allEvidence.find((asset) => /Altman|Sam/i.test(asset.title || ""))?.file
-  const sceneMuskImage = scene.evidenceAssets?.find((asset) => /Musk|Elon/i.test(asset.title || ""))?.file
-  const sceneAltmanImage = scene.evidenceAssets?.find((asset) => /Altman|Sam/i.test(asset.title || ""))?.file
+  const portraitImages = allEvidence.filter((asset) => /portrait|人物|public/i.test(asset.title || "")).map((asset) => asset.file).filter(Boolean)
+  const scenePortraitImages = (scene.evidenceAssets ?? []).filter((asset) => /portrait|人物|public/i.test(asset.title || "")).map((asset) => asset.file).filter(Boolean)
   const courtImage = allEvidence.find((asset) => /Dellums|Federal|court/i.test(asset.title || ""))?.file
   const trialImage = allEvidence.find((asset) => /Reuters|Al Jazeera|combination|trial combination/i.test(asset.title || ""))?.file
   const apImage = allEvidence.find((asset) => /AP News|courthouse photo/i.test(asset.title || ""))?.file
-  const muskUri = imageDataUri(scene.kind === "news_musk" ? sceneMuskImage : muskImage)
-  const altmanUri = imageDataUri(scene.kind === "news_altman" ? sceneAltmanImage : altmanImage)
+  const positionAUri = imageDataUri(scene.kind === "news_position_a" ? scenePortraitImages[0] : portraitImages[0])
+  const positionBUri = imageDataUri(scene.kind === "news_position_b" ? scenePortraitImages[1] : portraitImages[1])
   const courtUri = imageDataUri(courtImage)
   const trialUri = imageDataUri(trialImage)
   const apUri = imageDataUri(apImage)
@@ -3027,16 +3565,16 @@ function structuralHeroSvg(scene, index, allEvidence = []) {
       <rect x="330" y="686" width="780" height="86" rx="43" fill="rgba(3,7,6,.68)" stroke="#fff066" stroke-opacity=".35"/>
       ${sub("real news source visual · trial context", 720, 740, 34, "#f4f7f1")}
     `
-  } else if (scene.kind === "news_musk") {
+  } else if (scene.kind === "news_position_a") {
     body = `
-      ${portraitPhoto("muskEvidenceLarge", muskUri, 42, 34, 1356, 760, "#ff6f61", "left")}
+      ${portraitPhoto("positionAEvidenceLarge", positionAUri, 42, 34, 1356, 760, "#ff6f61", "left")}
       <rect x="84" y="620" width="620" height="84" rx="42" fill="rgba(3,7,6,.62)" stroke="#fff066" stroke-opacity=".24"/>
       <path d="M126 666 H654" stroke="#fff066" stroke-width="16" stroke-linecap="round"/>
       <path d="M126 694 H510" stroke="rgba(255,255,255,.28)" stroke-width="10" stroke-linecap="round"/>
     `
-  } else if (scene.kind === "news_altman") {
+  } else if (scene.kind === "news_position_b") {
     body = `
-      ${portraitPhoto("altmanEvidenceLarge", altmanUri, 42, 34, 1356, 760, "#49d6c8", "right")}
+      ${portraitPhoto("positionBEvidenceLarge", positionBUri, 42, 34, 1356, 760, "#49d6c8", "right")}
       <rect x="736" y="620" width="620" height="84" rx="42" fill="rgba(3,7,6,.62)" stroke="#49d6c8" stroke-opacity=".28"/>
       <path d="M786 666 H1308" stroke="#62eadc" stroke-width="16" stroke-linecap="round"/>
       <path d="M924 694 H1308" stroke="rgba(255,255,255,.28)" stroke-width="10" stroke-linecap="round"/>
@@ -3370,12 +3908,12 @@ function newsVisual(scene) {
     <rect x="52" y="188" width="616" height="318" rx="34" fill="rgba(16,23,21,0.82)" stroke="rgba(255,255,255,0.16)" />
     <circle cx="178" cy="314" r="74" fill="rgba(255,111,97,0.18)" stroke="#ff6f61" stroke-width="4" />
     <circle cx="542" cy="314" r="74" fill="rgba(73,214,200,0.18)" stroke="#49d6c8" stroke-width="4" />
-    <text x="178" y="326" text-anchor="middle" font-family="Inter, PingFang SC, sans-serif" font-size="28" font-weight="860" fill="#ffffff">Musk</text>
-    <text x="542" y="326" text-anchor="middle" font-family="Inter, PingFang SC, sans-serif" font-size="28" font-weight="860" fill="#ffffff">Altman</text>
+    <text x="178" y="326" text-anchor="middle" font-family="Inter, PingFang SC, sans-serif" font-size="28" font-weight="860" fill="#ffffff">Side A</text>
+    <text x="542" y="326" text-anchor="middle" font-family="Inter, PingFang SC, sans-serif" font-size="28" font-weight="860" fill="#ffffff">Side B</text>
     <path d="M256 314 C306 260 414 260 464 314" stroke="${scene.accent}" stroke-width="8" fill="none" stroke-linecap="round" />
     <path d="M464 314 C414 370 306 370 256 314" stroke="#ffffff" stroke-width="3" fill="none" opacity="0.38" stroke-linecap="round" />
     <rect x="252" y="254" width="216" height="120" rx="28" fill="rgba(255,255,255,0.09)" stroke="${scene.accent}" stroke-opacity="0.46" />
-    <text x="360" y="303" text-anchor="middle" font-family="Inter, PingFang SC, sans-serif" font-size="22" font-weight="820" fill="#ffffff">OpenAI</text>
+    <text x="360" y="303" text-anchor="middle" font-family="Inter, PingFang SC, sans-serif" font-size="22" font-weight="820" fill="#ffffff">AI org</text>
     <text x="360" y="338" text-anchor="middle" font-family="Inter, PingFang SC, sans-serif" font-size="17" font-weight="720" fill="#dfe8de">治理 / 使命 / 商业化</text>
     <rect x="102" y="438" width="516" height="20" rx="10" fill="rgba(255,255,255,0.10)" />
     <rect x="102" y="438" width="172" height="20" rx="10" fill="#ff6f61" opacity="0.82" />
@@ -4091,9 +4629,9 @@ function sceneTimeRanges(scenes = []) {
 
 function imagegenPromptPackFor(scenes = null) {
   const topic = scenes?.some((scene) => scene.kind?.startsWith("news_"))
-    ? "Elon Musk vs Sam Altman / OpenAI public conflict, current trial and governance dispute."
+    ? "Public news explainer: current dispute, governance, institutional mission and capital structure."
     : "AutoDirector controllable multi-agent video production platform: Producer orchestration, Agent handoff, assets, runtime, render and quality gate."
-  const scenePrompts = (scenes ?? sceneCardsFor({ brief: "Musk Altman OpenAI" })).map((scene, index) => ({
+  const scenePrompts = (scenes ?? sceneCardsFor({ brief: "AutoDirector product explainer" })).map((scene, index) => ({
     id: `scene_${index + 1}_oauth_imagegen`,
     useCase: "infographic-diagram",
     assetType: `scene-${index + 1}.png vertical ${scene.kind?.startsWith("news_") ? "news" : "product explainer"} hero`,
@@ -4190,15 +4728,15 @@ function topicScorecardFor(run, scenes = sceneCardsFor(run)) {
   return {
     briefKind: briefKind(run),
     chosenAngle: scenes[0]?.title ?? run.title,
-    whyThisAngle: briefKind(run) === "musk_altman_news" ? "High-conflict AI governance news explainer with clear opposing positions." : "Hackathon demo focused on controllable multi-agent production.",
-    risk: briefKind(run) === "musk_altman_news" ? "Facts must be refreshed before public submission; legal claims need careful wording." : "Avoid looking like a static template.",
+    whyThisAngle: briefKind(run) === "seeded_news_demo" ? "High-conflict governance news explainer with clear opposing positions." : "Product demo focused on controllable multi-agent production.",
+    risk: briefKind(run) === "seeded_news_demo" ? "Facts must be refreshed before public submission; legal claims need careful wording." : "Avoid looking like a static template.",
     titles: scenes.map((scene) => scene.title),
   }
 }
 
 function citationsFor(run, scenes, musicTrack, evidenceAssets = []) {
   const lines = ["# Citations", ""]
-  if (briefKind(run) === "musk_altman_news") {
+  if (briefKind(run) === "seeded_news_demo") {
     const sources = newsPlanFor(run)?.researchPack?.sources ?? []
     for (const source of sources) {
       lines.push(`- ${source.publisher}: ${source.title} — ${source.url}`)
@@ -4236,9 +4774,8 @@ function qualityReportFor(run, scenes, imagegenResults, musicTrack, evidenceAsse
   const missingHeroVisuals = acceptedHeroCount < scenes.length
   if (missingHeroVisuals) failures.push(`Missing accepted hero visuals: OAuth/imagegen or public-source editorial ${acceptedHeroCount}/${scenes.length}.`)
   if (hasLocalFallbackDiagram) failures.push(`Local structural diagrams were used as hero visuals: ${structuralDiagramCount}. This cannot pass final quality gate.`)
-  if (kind === "musk_altman_news") {
+  if (kind === "seeded_news_demo") {
     if (/AutoDirector 参赛片|14 个 worker|Producer 接到 brief|Runtime Plan 锁定/.test(titles)) failures.push("News brief fell back to AutoDirector demo template.")
-    if (!/Musk|Altman|OpenAI|马斯克|奥特曼/.test(titles)) failures.push("News scenes do not mention Musk / Altman / OpenAI.")
     if (publicAssetCount < 2) failures.push("Expected public evidence portrait/source assets for both sides.")
     if (acceptedHeroCount < scenes.length) failures.push("Every news hero visual must be supplied by OAuth imagegen or public-source editorial evidence assets; local HTML/SVG/raster diagrams are fallback only and cannot pass strict quality gate.")
     if (new Set(imagegenResults.map((item) => item.relativeFile ?? item.sourceFile ?? item.provider)).size < scenes.length) failures.push("Expected at least five distinct hero visuals.")
@@ -4247,7 +4784,7 @@ function qualityReportFor(run, scenes, imagegenResults, musicTrack, evidenceAsse
     const allFactsSourced = researchPack?.keyFacts?.every((fact) => Array.isArray(fact.source_ids) && fact.source_ids.length > 0)
     if (!hasResearchPlan || !allFactsSourced) failures.push("Research Agent did not provide sourced facts for the news topic.")
   }
-  if (generatedCount === 0 && kind !== "musk_altman_news") failures.push("No OAuth imagegen hero assets were registered; only compositor fallback was used.")
+  if (generatedCount === 0 && kind !== "seeded_news_demo") failures.push("No OAuth imagegen hero assets were registered; only compositor fallback was used.")
   const status = failures.length ? "Failed" : "Passed"
   return `# Quality Report
 
@@ -4397,6 +4934,13 @@ function generateFinalPackage(run) {
     "[package] wrote judging_readme.md",
     "[package] wrote quality_report.md",
   ])
+  recordRunWork(run, "package_preflight", {
+    summary: gate.ok ? "Recorder captured package preflight before final ZIP." : "Recorder captured blocked package preflight.",
+    agentId: "recorder",
+    outputId: "recorder_log",
+    packageStatus: gate.ok ? "ready" : "blocked",
+    imagegenGate: gate,
+  })
 
   writeFileSync(join(packageDir, "judging_readme.md"), judgingReadme)
   writeJson(join(packageDir, "asset_manifest.json"), assetManifest)
@@ -4415,6 +4959,7 @@ function generateFinalPackage(run) {
   writeFileSync(join(packageDir, "citations.md"), citations)
   writeFileSync(join(packageDir, "quality_report.md"), qualityReport)
   writeFileSync(join(packageDir, "run_log.jsonl"), runLog.map((line, index) => JSON.stringify({ index, line })).join("\n") + "\n")
+  writeRecorderPackageFiles(run, packageDir)
 
   pushEvent("package.writing", { runId: run.id, agentId: "quality", outputId: "final_package" })
   runCommand("zip", ["-qr", "source_project.zip", "source_project"], { cwd: packageDir })
@@ -4438,6 +4983,10 @@ function generateFinalPackage(run) {
     "citations.md",
     "quality_report.md",
     "run_log.jsonl",
+    "recorder_log.jsonl",
+    "recorder_summary.md",
+    "skill_suggestions.json",
+    "generated_skills",
     "assets",
   ]
   runCommand(
@@ -4458,6 +5007,14 @@ function generateFinalPackage(run) {
     blockedReason: gate.ok ? null : gate.failures,
     generatedAt: new Date().toISOString(),
   }
+  recordRunWork(run, gate.ok ? "package_ready" : "package_blocked", {
+    summary: gate.ok ? "Final package is ready and Recorder memory is available." : "Package is blocked and Recorder kept repair context.",
+    agentId: "recorder",
+    outputId: "skill_suggestions",
+    packageStatus: run.package.status,
+    files: run.package.files,
+    blockedReason: run.package.blockedReason,
+  })
   run.artifacts = run.artifacts
     .filter((artifact) => !["final_video", "final_package", "imagegen_prompt_pack", "blocked_imagegen_request"].includes(artifact.id))
     .concat([
@@ -4506,6 +5063,16 @@ function generateFinalPackage(run) {
           ? "包含 final.mp4、judging_readme、source_project、素材说明、引用来源、质量报告、运行日志。"
           : "阻塞包：包含 judging_readme、source_project、素材说明、prompt pack、质检失败报告和运行日志，但不包含假 final.mp4。",
         checks: gate.ok ? ["zip complete", "submission ready", "judging guide included", "reviewable source included"] : ["zip complete", "blocked honestly", "judging guide included", "no fake final video"],
+        createdAt: run.package.generatedAt,
+      },
+      {
+        id: "recorder_memory",
+        title: "Recorder memory",
+        type: "jsonl",
+        ownerAgentId: "recorder",
+        path: `/api/runs/${run.id}/files/recorder_log.jsonl`,
+        summary: "记录本次 run 的 Agent 工作、artifact 交接、打包状态，并生成后续可复用 skill 草稿。",
+        checks: ["recorder_log.jsonl", "skill_suggestions.json", "generated_skills included"],
         createdAt: run.package.generatedAt,
       },
     ])
@@ -4961,6 +5528,15 @@ async function routeMcp(req, res) {
             },
           },
           {
+            name: "autodirector_get_recorder_memory",
+            title: "Get Recorder Memory",
+            description: "Inspect Recorder's durable run log, reusable skill suggestions, and generated skill draft paths.",
+            inputSchema: {
+              type: "object",
+              properties: { runId: { type: "string" } },
+            },
+          },
+          {
             name: "autodirector_dispatch_next",
             title: "Dispatch Next Task",
             description: "Ask Producer to dispatch the next pipeline step. In oauth_agents mode this creates a real waiting Agent task instead of auto-completing it.",
@@ -5077,6 +5653,26 @@ async function routeMcp(req, res) {
         },
       })
     }
+    if (name === "autodirector_get_recorder_memory") {
+      const run = state.runs[args.runId ?? state.activeRunId]
+      if (!run) return json(res, 200, { jsonrpc: "2.0", id: body.id, error: { code: -32004, message: "run_not_found" } })
+      writeRecorderFiles(run)
+      return json(res, 200, {
+        jsonrpc: "2.0",
+        id: body.id,
+        result: {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              runId: run.id,
+              recorder: run.recorder,
+              latestEntries: run.recorder?.entries?.slice(-12) ?? [],
+              suggestions: run.recorder?.suggestions ?? recorderSuggestionsFor(run),
+            }, null, 2),
+          }],
+        },
+      })
+    }
     if (name === "autodirector_dispatch_next") {
       const run = dispatchNext(args.runId ?? state.activeRunId)
       const current = currentRunnableTask(run)
@@ -5165,6 +5761,14 @@ async function routeMcp(req, res) {
       run.imageAssetDir = validation.resolvedAssetDir
       const registeredFiles = registeredImageAssetFiles(run)
       run.logs.push(`[asset] registered OAuth imagegen assets: ${run.imageAssetDir} (${registeredFiles.length}/${sceneCardsFor(run).length} usable files)`)
+      recordRunWork(run, "image_assets_registered", {
+        summary: `Asset directory registered with ${registeredFiles.length} usable files.`,
+        agentId: "asset",
+        outputId: "asset_manifest",
+        assetDir: run.imageAssetDir,
+        registeredFiles: registeredFiles.map((file) => file.split("/").at(-1)),
+        expectedCount: sceneCardsFor(run).length,
+      })
       saveState()
       pushEvent("imagegen.assets_registered", { runId: run.id, agentId: "asset", assetDir: run.imageAssetDir, count: registeredFiles.length })
       return json(res, 200, {
@@ -5190,6 +5794,7 @@ async function routeApi(req, res, url) {
       layoutMode: body.layoutMode === "power" ? "power" : "simple",
       executionMode: executionModeForAgentHost(body.agentHost, body.executionMode),
       agentHost: body.agentHost === "codex_cli" ? "codex_native" : agentHostOptions.some((option) => option.id === body.agentHost) ? body.agentHost : "codex_native",
+      modelProvider: modelProviderOptions.some((option) => option.id === body.modelProvider) ? body.modelProvider : "codex_oauth",
       visualProvider: visualProviderOptions.some((option) => option.id === body.visualProvider) ? body.visualProvider : "codex_imagegen",
       completed: true,
       updatedAt: new Date().toISOString(),
@@ -5216,6 +5821,7 @@ async function routeApi(req, res, url) {
       layoutMode: body.layoutMode ?? state.settings.layoutMode,
       executionMode: body.executionMode ? normalizeExecutionMode(body.executionMode) : body.agentHost ? executionModeForAgentHost(body.agentHost) : normalizeExecutionMode(state.settings.executionMode),
       agentHost: body.agentHost === "codex_cli" ? "codex_native" : agentHostOptions.some((option) => option.id === body.agentHost) ? body.agentHost : state.settings.agentHost,
+      modelProvider: modelProviderOptions.some((option) => option.id === body.modelProvider) ? body.modelProvider : state.settings.modelProvider,
       visualProvider: visualProviderOptions.some((option) => option.id === body.visualProvider) ? body.visualProvider : state.settings.visualProvider,
       imageModel: body.imageModel ?? state.settings.imageModel ?? defaultImageModel,
       modelPolicy: nextModelPolicy,
@@ -5353,6 +5959,14 @@ async function routeApi(req, res, url) {
     run.imageAssetDir = validation.resolvedAssetDir
     const registeredFiles = registeredImageAssetFiles(run)
     run.logs.push(`[asset] registered OAuth imagegen assets: ${run.imageAssetDir} (${registeredFiles.length}/${sceneCardsFor(run).length} usable files)`)
+    recordRunWork(run, "image_assets_registered", {
+      summary: `Asset directory registered with ${registeredFiles.length} usable files.`,
+      agentId: "asset",
+      outputId: "asset_manifest",
+      assetDir: run.imageAssetDir,
+      registeredFiles: registeredFiles.map((file) => file.split("/").at(-1)),
+      expectedCount: sceneCardsFor(run).length,
+    })
     run.updatedAt = new Date().toISOString()
     saveState()
     pushEvent("imagegen.assets_registered", { runId: run.id, agentId: "asset", assetDir: run.imageAssetDir, count: registeredFiles.length })

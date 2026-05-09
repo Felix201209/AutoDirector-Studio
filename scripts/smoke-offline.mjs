@@ -42,7 +42,7 @@ function assertZipClean() {
   if (result.status !== 0) throw new Error(result.stderr || result.stdout || "package-code failed")
   const zipinfo = spawnSync("zipinfo", ["-1", "autodirector-code.zip"], { cwd: root, encoding: "utf8" })
   if (zipinfo.status !== 0) throw new Error(zipinfo.stderr || zipinfo.stdout || "zipinfo failed")
-  const forbidden = /(^|\/)(node_modules|\.git|dist|\.tmp|\.autodirector|\.agents|output|intro-site)(\/|$)|\.(mp4|mov|mp3|wav|aiff|ogg|m4a|png|jpg|jpeg|webp|zip|log|pyc|pyo)$|(^|\/)\.env($|\.local$|\.development$|\.production$|\.test$)/i
+  const forbidden = /(^|\/)(node_modules|\.git|dist|\.tmp|\.autodirector|\.agents|output|intro-site\/assets|intro-site\/control-ui\/assets|intro-site\/hero-video\/assets|intro-site\/hero-video\/audio)(\/|$)|\.(mp4|mov|mp3|wav|aiff|ogg|m4a|png|jpg|jpeg|webp|zip|log|pyc|pyo)$|(^|\/)\.env($|\.local$|\.development$|\.production$|\.test$)/i
   for (const entry of zipinfo.stdout.split(/\r?\n/).filter(Boolean)) {
     assert(!forbidden.test(entry), `source ZIP contains forbidden entry ${entry}`)
   }
@@ -80,6 +80,7 @@ async function main() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         agentHost: "codex_native",
+        modelProvider: "deepseek_api",
         visualProvider: "public_source_only",
         defaultRuntime: "hyperframes",
         layoutMode: "simple",
@@ -89,7 +90,10 @@ async function main() {
 
     const afterOnboarding = await request("/api/bootstrap")
     assert(afterOnboarding.settings?.completed, "offline onboarding did not persist")
+    assert(afterOnboarding.settings?.modelProvider === "deepseek_api", "offline onboarding did not persist model provider")
     assert(afterOnboarding.settings?.visualProvider === "public_source_only", "offline visual provider was not saved")
+    assert(afterOnboarding.capabilities?.modelProviders?.some((provider) => provider.id === "qwen_api"), "bootstrap missing Qwen provider option")
+    assert(afterOnboarding.capabilities?.modelProviders?.some((provider) => provider.id === "openai_compatible"), "bootstrap missing custom endpoint provider option")
 
     const created = await request("/api/runs", {
       method: "POST",

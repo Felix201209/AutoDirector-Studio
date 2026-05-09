@@ -1,15 +1,16 @@
 {
   "provider": "User-selected agent host; recommended route is Codex Native Kernel or Codex Plugin + AutoDirector MCP",
-  "default_model": "gpt-5.5",
+  "default_model": "codex-default",
   "default_image_model": "gpt-image-2",
   "imagegen_policy": "Generated hero visuals may pass only through Codex/ChatGPT plugin imagegen, explicit Image API, or user-uploaded assets. Other agent hosts can run the full non-image pipeline, but must block generated-image tasks instead of using local HTML/SVG/canvas diagrams.",
   "policy": {
-    "producer": { "model": "gpt-5.5", "thinkingLevel": "xhigh", "thinkingLabel": "extra high", "reason": "highest-level orchestration, decomposition, Quality Gate routing, patch ownership" },
-    "research": { "model": "gpt-5.5", "thinkingLevel": "high", "thinkingLabel": "high", "reason": "user preference extraction, source quality, factual grounding, and angle selection" },
-    "director": { "model": "gpt-5.5", "thinkingLevel": "high", "thinkingLabel": "high", "reason": "timed script, caption readability, shot format, visual hierarchy, transition design, and motion constraints" },
-    "asset": { "model": "gpt-5.5", "thinkingLevel": "high", "thinkingLabel": "high", "capabilities": ["imagegen", "browser_search", "web_music_search", "local_ncm_conversion", "music_metadata_inspection"], "reason": "asset acquisition, rights, imagegen prompt quality, local music inspection, and music/SFX planning" },
-    "programmer": { "model": "gpt-5.5", "thinkingLevel": "high", "thinkingLabel": "high", "reason": "translate creative plan into runtime constraints, then implement video source code" },
-    "render": { "model": "tool-runner", "thinkingLevel": "low", "thinkingLabel": "low", "capabilities": ["ffmpeg", "zip", "probe", "ncm-to-mp3", "audio_probe"], "reason": "deterministic local execution; LLM only for error triage" },
-    "quality": { "model": "gpt-5.5", "thinkingLevel": "high", "thinkingLabel": "high", "capabilities": ["audio_audit", "local_ncm_manifest_audit"], "reason": "visual Quality Gate, audio/source audit, package audit, and patch task routing" }
+    "producer": { "model": "codex-default", "thinkingLevel": "xhigh", "thinkingLabel": "extra high", "reason": "highest-level orchestration, decomposition, Quality Gate routing, patch ownership" },
+    "research": { "model": "codex-default", "thinkingLevel": "high", "thinkingLabel": "high", "reason": "user preference extraction, source quality, factual grounding, and angle selection" },
+    "director": { "model": "codex-default", "thinkingLevel": "high", "thinkingLabel": "high", "reason": "timed script, caption readability, shot format, visual hierarchy, transition design, and motion constraints" },
+    "asset": { "model": "codex-default", "thinkingLevel": "high", "thinkingLabel": "high", "capabilities": ["imagegen", "browser_search", "web_music_search", "local_ncm_conversion", "music_metadata_inspection"], "reason": "asset acquisition, rights, imagegen prompt quality, local music inspection, and music/SFX planning" },
+    "programmer": { "model": "codex-coding", "thinkingLevel": "high", "thinkingLabel": "high", "reason": "translate creative plan into runtime constraints, then implement video source code" },
+    "render": { "model": "local-tool-runner", "thinkingLevel": "low", "thinkingLabel": "low", "capabilities": ["ffmpeg", "zip", "probe", "ncm-to-mp3", "audio_probe"], "reason": "deterministic local execution; no cloud text model required" },
+    "quality": { "model": "codex-default", "thinkingLevel": "high", "thinkingLabel": "high", "capabilities": ["audio_audit", "local_ncm_manifest_audit"], "reason": "visual Quality Gate, audio/source audit, package audit, and patch task routing" },
+    "recorder": { "model": "deterministic-recorder", "thinkingLevel": "low", "thinkingLabel": "low", "capabilities": ["jsonl", "run_memory", "skill_drafts"], "reason": "stable sidecar memory, package evidence, and reusable skill draft generation without blocking production" }
   }
 }

@@ -4,10 +4,10 @@
   "description": "Codex companion plugin for AutoDirector: a controllable multi-agent video production team with Remotion/HyperFrames runtimes.",
   "author": {
     "name": "AutoDirector",
-    "email": "hello@autodirector.local",
-    "url": "https://easyclaw.link"
+    "email": "hello@autodirector.felixypz.me",
+    "url": "https://autodirector.felixypz.me/"
   },
-  "homepage": "http://127.0.0.1:8787",
+  "homepage": "https://autodirector.felixypz.me/",
   "repository": "https://github.com/Felix201209/Glitch-AutoDirector",
   "license": "UNLICENSED",
   "keywords": [
@@ -31,9 +31,9 @@
       "Code",
       "Image"
     ],
-    "websiteURL": "http://127.0.0.1:8787",
-    "privacyPolicyURL": "http://127.0.0.1:8787/privacy",
-    "termsOfServiceURL": "http://127.0.0.1:8787/terms",
+    "websiteURL": "https://autodirector.felixypz.me/",
+    "privacyPolicyURL": "https://github.com/Felix201209/Glitch-AutoDirector#privacy",
+    "termsOfServiceURL": "https://github.com/Felix201209/Glitch-AutoDirector#terms",
     "defaultPrompt": [
       "用 AutoDirector 创建一个 30 秒产品介绍视频，先给我任务图和成功标准。",
       "接管当前 AutoDirector run，按 Producer -> Agent -> artifact 的方式继续推进。",

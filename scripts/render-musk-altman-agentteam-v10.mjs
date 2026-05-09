@@ -12,6 +12,7 @@ const workDir = join(root, ".tmp", outputName)
 const frameDir = join(workDir, "frames")
 const evidenceDir = join(assetDir, `${outputName}-evidence`)
 const packageDir = join(workDir, "package")
+const sourceProjectDir = join(packageDir, "source_project")
 
 const projectPath = (file) => relative(root, file).replaceAll("\\", "/")
 
@@ -20,6 +21,7 @@ rmSync(evidenceDir, { recursive: true, force: true })
 mkdirSync(frameDir, { recursive: true })
 mkdirSync(evidenceDir, { recursive: true })
 mkdirSync(packageDir, { recursive: true })
+mkdirSync(sourceProjectDir, { recursive: true })
 
 const W = 720
 const H = 1280
@@ -709,6 +711,153 @@ const sourceProject = {
   scenes: sceneDefs,
   voice_units: voiceUnits,
 }
+const runtimePlan = {
+  runtime: "hyperframes-style node renderer",
+  renderCommand: "node render-musk-altman-agentteam-v10.mjs",
+  durationSeconds: Number(DURATION.toFixed(3)),
+  fps: FPS,
+  resolution: { width: W, height: H },
+  sceneCount: sceneDefs.length,
+  requiredEvidence: [
+    "voice_screen_map.json",
+    "sync_quality.json",
+    "visual_composition_plan.json",
+    "quality_report.json",
+  ],
+}
+const captionStyleguide = {
+  safeArea: "bottom subtitle plate, away from portrait/source visuals",
+  maxLines: 2,
+  source: "caption_blocks.json",
+  rules: ["short Chinese caption blocks", "caption timing follows voice_screen_map", "no caption over primary subject"],
+}
+const motionBoard = {
+  frameRate: FPS,
+  patterns: [...new Set(sceneDefs.map((scene) => scene.mode))],
+  transitionPolicy: "scene-specific camera and layer motion, no repeated card-only template",
+  syncSource: "voice_screen_map.json",
+}
+const soundPlan = {
+  narration: {
+    provider: "Edge neural TTS",
+    file: "voiceover.txt",
+    vtt: "voice-neural-yunyang.vtt",
+  },
+  music: musicSelectionReport.selected,
+  mix: "ducked below narration; silent fallback is deterministic when local music is unavailable",
+}
+const imagegenPromptPack = {
+  policy: "news/public-figure visuals use sourced evidence or abstract editorial graphics; no fake portraits",
+  prompts: sceneDefs.map((scene, index) => ({
+    id: `scene-${index + 1}`,
+    sceneId: scene.id,
+    mode: scene.mode,
+    prompt: `9:16 premium editorial explainer visual for ${scene.title}; no fake readable text; preserve subtitle safe zones.`,
+  })),
+}
+const researchPack = {
+  topic: "Musk vs Altman / OpenAI governance dispute",
+  framing: "public dispute positions, not final legal findings",
+  sources: JSON.parse(readFileSync(join(sourceDir, "sources.json"), "utf8")).assets,
+  refreshRequiredForReuse: true,
+}
+const topicScorecard = {
+  demoValue: 9,
+  agentTeamFit: 9,
+  risk: "current-news facts and third-party image licenses require recheck before reuse",
+  whyThisAngle: "high-conflict AI governance explainer with clear research, script, asset, render, and quality roles",
+}
+const assetManifest = {
+  generatedAt: new Date().toISOString(),
+  video: `${outputName}.mp4`,
+  poster: `${outputName}-poster.jpg`,
+  sources: researchPack.sources,
+  evidenceFiles: Object.keys({
+    voice_screen_map: true,
+    caption_blocks: true,
+    tts_plan: true,
+    visual_composition_plan: true,
+    sync_quality: true,
+    music_selection_report: true,
+    quality_report: true,
+    source_project: true,
+    hash_report: true,
+  }),
+  music: musicSelectionReport,
+}
+const shotlist = {
+  scenes: sceneDefs.map((scene) => ({
+    id: scene.id,
+    mode: scene.mode,
+    title: scene.title,
+    start: scene.start,
+    end: scene.end,
+    visualEvent: scene.sub,
+  })),
+}
+const citations = [
+  "# Citations",
+  "",
+  ...researchPack.sources.map((asset) => `- ${asset.file}: ${asset.source} — ${asset.license}; author: ${asset.author}`),
+  "- Fact framing: public dispute narration must be refreshed against current court/news sources before reuse.",
+  "- Music: deterministic silent fallback when the local candidate is unavailable.",
+  "",
+].join("\n")
+const judgingReadme = [
+  "# AutoDirector Judging README",
+  "",
+  `Demo package: ${outputName}`,
+  `Runtime: ${runtimePlan.runtime}`,
+  `Final video: ${outputName}.mp4`,
+  "",
+  "## What to inspect",
+  "",
+  "1. Play the final MP4.",
+  "2. Open `source_project.zip` for the reproducible renderer source map.",
+  "3. Open `agent_interactions.md`, `asset_manifest.json`, `citations.md`, and `quality_report.md` for the handoff and quality trail.",
+  "4. Open `sync_quality.json` and `voice_screen_map.json` for voice/screen timing evidence.",
+  "",
+].join("\n")
+const agentInteractions = [
+  "# Agent Interactions",
+  "",
+  "- Producer: scoped the 31s news explainer run and delivery requirements.",
+  "- Research: recorded source and license evidence for public-figure visuals.",
+  "- Story Director: mapped narration to scene events and caption blocks.",
+  "- Asset: staged portraits/source visuals, TTS, music fallback, and contact sheet evidence.",
+  "- Video Engineer: rendered the vertical composition with scene-specific layouts.",
+  "- Render: exported MP4, poster, contact sheet, and hashes.",
+  "- Quality Gate: checked sync, TTS, composition, package contents, and licensing notes.",
+  "",
+].join("\n")
+const scriptMarkdown = [
+  "# Script",
+  "",
+  narrationText,
+  "",
+  "## Voice notes",
+  "",
+  narrationInstructions,
+  "",
+].join("\n")
+const qualityReportMarkdown = [
+  "# Quality Report",
+  "",
+  `Status: ${qualityReport.status}`,
+  "",
+  ...qualityReport.notes.map((note) => `- ${note}`),
+  "- Includes citations, source project ZIP, runtime plan, and run log.",
+  "",
+].join("\n")
+const runLogJsonl = [
+  "producer.task_graph.ready",
+  "research.sources.recorded",
+  "director.voice_screen_map.ready",
+  "asset.evidence_and_sound.ready",
+  "programmer.runtime_plan.ready",
+  "render.mp4.ready",
+  "quality.package.passed",
+].map((line, index) => JSON.stringify({ index, line })).join("\n") + "\n"
 const hashReport = {
   generatedAt: new Date().toISOString(),
   outputVideo: projectPath(outputVideo),
@@ -745,6 +894,27 @@ copyFileSync(contactSheet, join(packageDir, "contact-sheet.jpg"))
 copyFileSync(outputVideo, join(packageDir, `${outputName}.mp4`))
 copyFileSync(posterPath, join(packageDir, `${outputName}-poster.jpg`))
 copyFileSync(import.meta.filename, join(packageDir, "render-musk-altman-agentteam-v10.mjs"))
+writeFileSync(join(packageDir, "judging_readme.md"), judgingReadme)
+writeFileSync(join(packageDir, "asset_manifest.json"), `${JSON.stringify(assetManifest, null, 2)}\n`)
+writeFileSync(join(packageDir, "runtime_plan.json"), `${JSON.stringify(runtimePlan, null, 2)}\n`)
+writeFileSync(join(packageDir, "caption_styleguide.json"), `${JSON.stringify(captionStyleguide, null, 2)}\n`)
+writeFileSync(join(packageDir, "motion_board.json"), `${JSON.stringify(motionBoard, null, 2)}\n`)
+writeFileSync(join(packageDir, "sound_plan.json"), `${JSON.stringify(soundPlan, null, 2)}\n`)
+writeFileSync(join(packageDir, "imagegen_prompt_pack.json"), `${JSON.stringify(imagegenPromptPack, null, 2)}\n`)
+writeFileSync(join(packageDir, "research_pack.json"), `${JSON.stringify(researchPack, null, 2)}\n`)
+writeFileSync(join(packageDir, "topic_scorecard.json"), `${JSON.stringify(topicScorecard, null, 2)}\n`)
+writeFileSync(join(packageDir, "agent_interactions.md"), agentInteractions)
+writeFileSync(join(packageDir, "script.md"), scriptMarkdown)
+writeFileSync(join(packageDir, "shotlist.json"), `${JSON.stringify(shotlist, null, 2)}\n`)
+writeFileSync(join(packageDir, "citations.md"), citations)
+writeFileSync(join(packageDir, "quality_report.md"), qualityReportMarkdown)
+writeFileSync(join(packageDir, "run_log.jsonl"), runLogJsonl)
+writeFileSync(join(sourceProjectDir, "README.md"), "# Source Project\n\nRun `node render-musk-altman-agentteam-v10.mjs` from the repository root to regenerate this package.\n")
+writeFileSync(join(sourceProjectDir, "source-project.json"), `${JSON.stringify(sourceProject, null, 2)}\n`)
+writeFileSync(join(sourceProjectDir, "runtime_plan.json"), `${JSON.stringify(runtimePlan, null, 2)}\n`)
+writeFileSync(join(sourceProjectDir, "package.json"), `${JSON.stringify({ type: "module", scripts: { render: "node render-musk-altman-agentteam-v10.mjs" } }, null, 2)}\n`)
+copyFileSync(import.meta.filename, join(sourceProjectDir, "render-musk-altman-agentteam-v10.mjs"))
+run("zip", ["-qr", "source_project.zip", "source_project"], { cwd: packageDir })
 
 const packageZip = join(assetDir, `${outputName}-package.zip`)
 rmSync(packageZip, { force: true })

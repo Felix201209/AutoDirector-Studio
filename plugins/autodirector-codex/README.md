@@ -36,3 +36,4 @@ Image generation is available only when the host is Codex/ChatGPT plugin mode wi
 3. The relevant skill produces an artifact and calls `autodirector_submit_agent_artifact`.
 4. Visual/Imagegen skill generates scene assets and calls `autodirector_register_image_assets`.
 5. Quality Gate checks frames, sources, captions, rhythm, and package completeness.
+6. Recorder memory can be inspected with `autodirector_get_recorder_memory`; it contains run logs, skill suggestions, and generated skill draft paths.

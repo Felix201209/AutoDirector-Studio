@@ -1,6 +1,6 @@
 # AutoDirector Completion Audit
 
-Last updated: 2026-05-04
+Last updated: 2026-05-07
 
 Author verification only. Judge network, local tools, and Codex login state may differ. For portable review, start with `JUDGE_GUIDE.md` and run `npm run verify:quick`; public/network and native Codex checks are intentionally separated into `npm run verify:full`.
 
@@ -8,7 +8,7 @@ Author verification only. Judge network, local tools, and Codex login state may 
 
 Keep upgrading AutoDirector toward an EasyClaw hackathon finalist/winner demo:
 
-- Web UI control room for a real 7-Agent video production team.
+- Web UI control room for a real multi-Agent video production team plus non-blocking Recorder memory.
 - Native Codex Kernel execution with persistent Producer and Agent threads.
 - Real artifact handoff between Agents; no fabricated completion path.
 - Real native image generation or direct-source editorial evidence for hero visuals.
@@ -21,7 +21,7 @@ Keep upgrading AutoDirector toward an EasyClaw hackathon finalist/winner demo:
 | Prompt / Requirement | Current Artifact | Evidence |
 | --- | --- | --- |
 | EasyClaw required project showcase website | `https://autodirector.felixypz.me/` and `https://autodirector.felixypz.me/control-ui/` | EasyClaw hackathon page checked live on 2026-05-04: the required submission items are `项目展示网站` and `代码压缩包`. Public URL checks belong to `npm run healthcheck:public` / `npm run verify:full`, because judge networks may differ. |
-| EasyClaw required code ZIP | `autodirector-code.zip` | `npm run zip:code` rebuilt an approximately 416K ZIP; `zipinfo` scan confirms it excludes `node_modules`, `.tmp`, `dist`, public `control-ui`, public media, Python bytecode/cache, legacy audit-style entry names, nested ZIPs, temporary screenshots, and macOS metadata. A separate extracted-content scan is run with the intentionally frozen `delivery.html` excluded. |
+| EasyClaw required code ZIP | `autodirector-code.zip` | `npm run zip:code` rebuilds a clean source ZIP. It now includes local app source plus public showcase HTML/CSS/JS source and `intro-site/demo-manifest.json`, while still excluding `node_modules`, `.tmp`, `dist`, built public Control UI assets, public media, generated packages, Python bytecode/cache, legacy audit-style entry names, nested ZIPs, temporary screenshots, and macOS metadata. |
 | Public 1:1 Control UI must be reachable but read-only | `intro-site/control-ui/` served at `/control-ui/` | Public browser audit at 1440px and 390px found no `/api/` resource requests, disabled textareas/buttons for agent execution, no horizontal overflow, and no old audit-copy strings. |
 | Public UI must not allow talking to an Agent | `src/App.tsx`, public bundle `index-LLUHMqSN.js` | Runtime browser evaluation found the textarea disabled, no enabled mutation buttons, no backend API resource requests, and no backend API path in the public read-only bundle. |
 | Public Control UI project label should stay compact | `src/App.tsx`, `intro-site/control-ui/` | The public read-only run title is `Musk vs Altman v10`, and healthcheck rejects the old long `正式通过 AutoDirector Agent Team...` title. Project rows include explicit `aria-label` text for title, runtime, and status. |
@@ -44,25 +44,26 @@ Keep upgrading AutoDirector toward an EasyClaw hackathon finalist/winner demo:
 | No `codex exec` Agent path | Static checks no longer find the retired fake CLI route. Production waits on native artifact submissions instead of shelling out to a fabricated completion path. |
 | Producer chat is separate from production start | Web UI chat uses Producer stream; production starts through Start Production / one-click dispatch. |
 | Artifact handoff is explicit | Each task has input artifacts, output artifacts, owner Agent, status, success criteria, and a handoff rule. |
+| Recorder memory is durable | `server/index.mjs` records run creation, task start, artifact submission/blocking, image asset registration, package preflight, and package result into `recorder_log.jsonl`, `recorder_summary.md`, `skill_suggestions.json`, and generated skill draft folders. Recorder is sidecar-only and does not block the production pipeline. |
 | Strict visual gate exists | Asset preflight generates or registers hero visuals; `strictImagegenGate` rejects local HTML/SVG/canvas fallback as final hero visuals. |
 | Quality gates can block weak output | Smoke coverage confirms the quality/imagegen gate blocks fake `final.mp4` output when OAuth imagegen assets are absent. |
-| Final package is judge-friendly | `generateFinalPackage` now writes `judging_readme.md` alongside `final.mp4`, source ZIP, manifests, prompt pack, citations, quality report, transcript, script, shotlist, and run log. |
-| Source ZIP is clean | `scripts/package-code.mjs` creates root `autodirector-code.zip` while intentionally excluding public media, `.autodirector`, Playwright output, logs, Python bytecode/cache, legacy audit-style entry names, and WebUI/source ZIP copies from `intro-site`; it now fails the build if forbidden entries are present after packaging. The frozen `delivery.html` content is preserved by user request and audited as an explicit exception. |
+| Final package is judge-friendly | `generateFinalPackage` now writes `judging_readme.md` alongside `final.mp4`, source ZIP, manifests, prompt pack, citations, quality report, transcript, script, shotlist, run log, Recorder memory, and generated skill drafts. |
+| Source ZIP is clean | `scripts/package-code.mjs` creates root `autodirector-code.zip` while intentionally including public showcase source files and excluding public media, built public Control UI assets, `.autodirector`, Playwright output, logs, Python bytecode/cache, legacy audit-style entry names, and generated ZIP copies from `intro-site`; it fails the build if forbidden entries are present after packaging. The frozen `delivery.html` content is preserved by user request and audited as an explicit exception. |
 | README is current | `README.md` documents native route, plugin route, 7-Agent team, generated package contents, and verification commands. |
 | Public demo URL is reachable | `https://autodirector.felixypz.me/` returns HTTP 200 from the static `intro-site` server. |
 | Public demo has no backend API | `https://autodirector.felixypz.me/api/bootstrap` returns HTTP 404, confirming the public live demo is display-only and not connected to WebUI backend state. |
 | Public final video URL is reachable | `https://autodirector.felixypz.me/assets/musk-altman-agentteam-v10.mp4` returns HTTP 200 with `content-type: video/mp4`; `delivery.html` points at this current v10 film. |
 | Public final package ZIP is reachable | `https://autodirector.felixypz.me/assets/musk-altman-agentteam-v10-package.zip` returns HTTP 200 with `content-type: application/zip`; `delivery.html` points at this v10 package URL. |
 | WebUI/source ZIPs are not public | `intro-site/assets/autodirector-code.zip` and `intro-site/assets/autodirector-source.zip` were removed; public requests for those paths return 404. |
-| Official public delivery package is current | `musk-altman-agentteam-v10-package.zip` includes the v10 film, render script, source/evidence manifests, quality report, music report, caption blocks, TTS plan, `voice_screen_map.json`, and `sync_quality.json`. |
-| One-command local healthcheck exists | `npm run healthcheck:local` verifies local static files, Node syntax, and the clean source ZIP without requiring public network access. `npm run healthcheck:public` checks the deployed showcase and public media package. |
+| Official public delivery package is current | `musk-altman-agentteam-v10-package.zip` includes the unchanged v10 film plus `judging_readme.md`, `source_project.zip`, `asset_manifest.json`, `runtime_plan.json`, `research_pack.json`, `citations.md`, `quality_report.md`, `run_log.jsonl`, render script, source/evidence manifests, music report, caption blocks, TTS plan, `voice_screen_map.json`, and `sync_quality.json`. |
+| One-command local healthcheck exists | `npm run healthcheck:local` verifies local static files, Node syntax, and the clean source ZIP without requiring public network access. `npm run healthcheck:public` checks the deployed showcase, manifest-declared Control UI deep links, and public media package. |
 | Submission gate is judge-friendly | `npm run verify:submission` maps to `npm run verify:judge`, which uses the portable offline path. `npm run verify:full` keeps the slower public/Codex checks available for author or advanced review. |
 | Public read-only Control UI is reachable | `https://autodirector.felixypz.me/control-ui/` serves the built React shell under `/control-ui/assets/`; browser audits found no `/api` requests, no enabled mutating controls, no internal owner-id leak in the plan card, and no horizontal overflow. |
 | Browser UI was rechecked | Playwright browser audits covered public static pages and the public read-only Control UI at 390px and 1440px; the latest mobile pass also checked static typography stability and zero horizontal overflow. |
 
 ## Latest Verification Commands
 
-Passed after the 2026-05-04 UI, public-readonly, packaging, and healthcheck upgrades:
+Current verification set for the 2026-05-07 judge-readiness hardening:
 
 ```bash
 node --check server/index.mjs
@@ -86,12 +87,12 @@ curl -I -L --max-time 20 https://autodirector.felixypz.me/api/bootstrap
 
 ## Latest Results
 
-- `npm run verify:submission` passed end-to-end. It ran `lint`, `build`, `build:public-ui`, `smoke`, `healthcheck`, and `zip:code`.
-- Latest smoke run `run_1777850509361` verified that native/OAuth Agent mode waits for artifact submission and that the quality gate blocks fake `final.mp4`.
-- `npm run healthcheck` passed against the current public v10 delivery film/package: `720x1280`, `31.1s`, `video/mp4`, and `application/zip`; it also enforces non-delivery CSS cache-busting, localized static navigation, homepage direct Control UI entries, Control UI polish copy gates, UI style anti-pattern scans, legacy audit-copy scans, public read-only bundle scans, public ZIP cleanliness, and absence of legacy audit-style ZIP entries.
+- `npm run verify:submission` is the portable judge gate: `lint`, `test:unit`, `build`, `smoke:offline`, `healthcheck:local`, and `zip:code`.
+- `npm run smoke:codex` now covers three native/OAuth Agent behaviors: waiting for real artifact submission, completing a deterministic Producer -> Research -> Director -> Asset -> Programmer -> Render -> Quality artifact chain, and blocking fake `final.mp4` when OAuth imagegen hero assets are missing.
+- `npm run healthcheck:public` checks the current public v10 delivery film/package: `720x1280`, `31.1s`, `video/mp4`, and `application/zip`; it also enforces non-delivery CSS cache-busting, localized static navigation, manifest-declared Control UI deep links, Control UI polish copy gates, UI style anti-pattern scans, legacy audit-copy scans, public read-only bundle scans, public ZIP cleanliness, and absence of legacy audit-style ZIP entries.
 - `npm run build:public-ui` produced the current read-only Control UI assets: `index-LLUHMqSN.js` and `index-DdubRd2W.css`; the public `/control-ui/` page now serves the same asset pair.
-- `npm run zip:code` produced an approximately 416K `autodirector-code.zip`; the final SHA-256 should be read from the latest packaging command because this audit file is included inside the source ZIP.
-- ZIP cleanliness scans found no local user paths, personal email, `.DS_Store`, Python bytecode/cache, public videos, nested ZIPs, `dist`, or `intro-site/control-ui` entries in `autodirector-code.zip`; the v10 public package and `final-package.zip` were rebuilt from sanitized evidence files.
+- `npm run zip:code` produces `autodirector-code.zip`; the final SHA-256 should be read from the latest packaging command because this audit file is included inside the source ZIP.
+- ZIP cleanliness scans reject local user paths, personal email, `.DS_Store`, Python bytecode/cache, public videos/audio/images, nested generated ZIPs, `dist`, and built public Control UI assets in `autodirector-code.zip`; the v10 public package is rebuilt by `npm run package:v10-existing` from sanitized evidence files without rewriting the existing video.
 - Non-delivery source paths/content, source ZIP entry names, and the v10 public package no longer expose legacy audit-style artifact names; the current public package uses `quality_report.json` and `sync_quality.json`. The only preserved old wording is inside the frozen `delivery.html`, which remains unchanged by the current polish pass.
 - Public static pages and public read-only Control UI were checked at mobile and desktop widths with no horizontal overflow, no unlabeled controls, no enabled public mutation controls, no computed negative letter-spacing on audited headings/controls, and no legacy audit-copy strings. The latest direct Chrome CDP audit covered the public homepage at 390px plus public Control UI Settings/Agents/Delivery at 390px and Settings at 1440px; all returned `overflowPx: 0`, no `/api/` resources, no editable public textarea, and no legacy worker/review-agent copy.
 - Public demo remains static-only; root pages return HTTP 200 and `/api/bootstrap` returns HTTP 404 by design.
@@ -101,6 +102,6 @@ curl -I -L --max-time 20 https://autodirector.felixypz.me/api/bootstrap
 ## Current Known Gaps
 
 - A hackathon win cannot be guaranteed by audit language; the codebase can only maximize clarity, reliability, and demo quality.
-- The smoke test intentionally avoids a full native imagegen/render run because that is slow and quota-consuming.
+- The smoke test uses deterministic local smoke assets for the complete artifact-chain package run; a live native imagegen run is still optional because it can be slow and quota-consuming.
 - Public deployed URL should still be rechecked immediately before live judging, because public availability depends on the static host/tunnel staying online.
 - Full native imagegen/render should be rerun only when quota/time allows; current automated smoke verifies blocking behavior, and the current v10 public package remains the demo artifact.

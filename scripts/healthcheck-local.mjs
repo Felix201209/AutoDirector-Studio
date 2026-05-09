@@ -35,6 +35,14 @@ if (existsSync("intro-site")) {
   assert(home.includes('id="intro-video"'), "homepage should keep the intro video player")
   assert(home.includes("assets/autodirector-intro-edge.mp4"), "homepage should point at the intro demo video")
   assert(!home.includes("Watch demo"), "homepage nav action should be localized")
+  assert(home.includes("本地控制台可运行"), "homepage hero should expose product proof chips")
+  assert(home.includes("Quick Route"), "homepage should expose the fast product path")
+  assert(home.includes("交付包完整留痕"), "homepage should explain delivery traceability")
+
+  const pipeline = readFileSync("intro-site/pipeline.html", "utf8")
+  assert(pipeline.includes("Handoff Trail"), "pipeline page should include Agent handoff trail")
+  assert(pipeline.includes("brief → task_graph"), "handoff trail should show Producer handoff")
+  assert(pipeline.includes("quality_report / sync_quality"), "handoff trail should show Quality output")
 
   const details = readFileSync("intro-site/details.html", "utf8")
   assert(details.includes("失败不是结束"), "details page should show the patch loop")
@@ -44,6 +52,8 @@ if (existsSync("intro-site")) {
   assert(delivery.includes("30 秒旁白脚本"), "delivery page should include transcript")
   assert(delivery.includes("场景和画面事件"), "delivery page should include scene list")
   assert(delivery.includes("素材和证据怎么审"), "delivery page should include source evidence")
+  assert(delivery.includes("换一个 brief，也走同一条生产线"), "delivery page should show an alternate brief")
+  assert(delivery.includes("Smart Water Bottle Product Launch"), "delivery page should cite the general sample brief")
 
   const manifest = JSON.parse(readFileSync("intro-site/demo-manifest.json", "utf8"))
   assert(manifest.publicShowcaseUrl === "https://autodirector.felixypz.me/", "demo manifest has wrong showcase URL")
@@ -54,6 +64,16 @@ if (existsSync("intro-site")) {
 const generalExample = JSON.parse(readFileSync("examples/smart-water-bottle/brief.json", "utf8"))
 assert(generalExample.brief?.includes("smart water bottle"), "general example brief is missing expected product prompt")
 assert(generalExample.requiredPipelineChecks?.length >= 6, "general example should exercise the Agent pipeline")
+
+const appSource = readFileSync("src/App.tsx", "utf8")
+for (const providerNeedle of ["Claude / Anthropic API", "DeepSeek API", "Qwen API", "OpenAI-compatible Endpoint", "CUSTOM_MODEL_BASE_URL"]) {
+  assert(appSource.includes(providerNeedle), `Settings UI should expose provider option ${providerNeedle}`)
+}
+
+const envExample = readFileSync(".env.example", "utf8")
+for (const envNeedle of ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY", "DASHSCOPE_API_KEY", "QWEN_API_KEY", "CUSTOM_MODEL_BASE_URL"]) {
+  assert(envExample.includes(envNeedle), `.env.example should document ${envNeedle}`)
+}
 
 const packageResult = spawnSync(process.execPath, ["scripts/package-code.mjs"], { encoding: "utf8" })
 if (packageResult.status !== 0) throw new Error(packageResult.stderr || packageResult.stdout || "package-code failed")
@@ -68,6 +88,8 @@ for (const required of [
   "server/artifact-schema.mjs",
   "server/security-utils.mjs",
   "scripts/unit-tests.mjs",
+  "docs/agent-skills/recorder.md",
+  "plugins/autodirector-codex/skills/recorder/SKILL.md",
   "plugins/autodirector-codex/README.md",
   "examples/smart-water-bottle/brief.json",
 ]) {

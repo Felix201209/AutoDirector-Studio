@@ -65,7 +65,7 @@ export const runtimePacks = [
     id: "auto" as RuntimeId,
     name: "自动选择",
     tone: "Producer 根据视频类型、风格和素材风险选择最稳 runtime。",
-    bestFor: "黑客松现场演示、普通用户默认路径",
+    bestFor: "现场演示、普通用户默认路径",
   },
   {
     id: "remotion" as RuntimeId,
@@ -117,7 +117,7 @@ export const agentSkills: AgentSkill[] = [
     ],
     inputs: ["project_brief"],
     outputs: ["research_pack", "user_preferences", "topic_scorecard"],
-    doneWhen: ["偏好约束明确", "每条关键事实有来源", "推荐角度有评分依据", "风险项被显式标记"],
+    doneWhen: ["偏好约束明确", "每条关键事实有来源", "推荐角度有选择依据", "风险项被显式标记"],
     handoff: "交给 Story Director，直接写成可拍、可剪、可实现的脚本和分镜。",
   },
   {
@@ -215,6 +215,25 @@ export const agentSkills: AgentSkill[] = [
     doneWhen: ["所有硬性标准通过", "返修任务可局部执行", "最终包完整"],
     handoff: "交给 Producer 向用户交付视频、源码、素材说明和质检报告。",
   },
+  {
+    id: "recorder",
+    name: "Recorder Agent",
+    shortName: "Recorder",
+    role: "工作记录 / Skill 沉淀",
+    icon: FileSearch,
+    mission: "旁路记录每次工作，把可复用经验沉淀成后续可用的 skill 草稿。",
+    skillStack: ["recorder_log.jsonl", "Run Memory", "Skill Suggestions", "Generated SKILL.md", "非阻塞写入"],
+    how: [
+      "监听 run 创建、任务开始、artifact 保存、素材登记和打包事件。",
+      "用确定性模板写 recorder_summary、skill_suggestions 和 generated_skills。",
+      "只沉淀流程经验，不把新闻事实或素材来源当成永久真理。",
+      "记录失败也不阻塞主链路，保证出片稳定。",
+    ],
+    inputs: ["run_events", "artifacts", "package_state"],
+    outputs: ["recorder_log", "recorder_summary", "skill_suggestions", "generated_skills"],
+    doneWhen: ["每次关键工作都有记录", "skill 草稿可定位证据", "失败不影响主流程"],
+    handoff: "交给未来 Producer 或 Recorder 读取，用于相似 brief 的稳定复用。",
+  },
 ]
 
 export const artifacts: Artifact[] = [
@@ -231,7 +250,7 @@ export const artifacts: Artifact[] = [
     title: "用户偏好画像",
     owner: "Research",
     type: "json",
-    summary: "受众为评委和早期用户，语气专业但不僵硬，平台优先网页展示和 16:9。",
+    summary: "受众为早期用户和产品团队，语气专业但不僵硬，平台优先网页展示和 16:9。",
     checks: ["时长 30s", "节奏中高", "避免版权不明素材"],
   },
   {
@@ -239,12 +258,12 @@ export const artifacts: Artifact[] = [
     title: "资料包",
     owner: "Research",
     type: "json",
-    summary: "整理产品价值、黑客松要求、多 Agent 团队表达和素材风险。",
+    summary: "整理产品价值、多 Agent 团队表达和素材风险。",
     checks: ["来源可追溯", "事实风险已标注", "视觉线索可用"],
   },
   {
     id: "topic_scorecard",
-    title: "选题评分",
+    title: "选题判断",
     owner: "Research",
     type: "json",
     summary: "推荐角度：把 GPT/Codex 能力组织成一支可自动验证的视频制作公司。",
@@ -322,6 +341,14 @@ export const artifacts: Artifact[] = [
     summary: "字幕、时长、素材、事实、平台规格通过；一处动效节奏建议已生成 patch。",
     checks: ["硬性标准通过", "patch task 可执行", "最终包完整"],
   },
+  {
+    id: "recorder_memory",
+    title: "Recorder 记忆",
+    owner: "Recorder",
+    type: "jsonl",
+    summary: "记录本次 run 的任务、artifact、打包和 skill 建议，方便未来复用。",
+    checks: ["recorder_log.jsonl", "skill_suggestions.json", "generated_skills"],
+  },
 ]
 
 export const timeline: TimelineStep[] = [
@@ -331,7 +358,7 @@ export const timeline: TimelineStep[] = [
     label: "用户 Brief",
     agentId: "producer",
     outputId: "task_graph",
-    managerLine: "我先把你的需求拆成可审计的视频生产任务。",
+    managerLine: "我先把你的需求拆成可追踪的视频生产任务。",
   },
   {
     id: "research",
@@ -429,20 +456,24 @@ export const packageItems = [
   "citations.md",
   "quality_report.md",
   "run_log.jsonl",
+  "recorder_log.jsonl",
+  "recorder_summary.md",
+  "skill_suggestions.json",
+  "generated_skills/",
 ]
 
 export const demoBrief = {
   topic: "AutoDirector：多 Agent 视频制作团队",
-  audience: "EasyClaw 黑客松评委",
+  audience: "产品团队和早期用户",
   platform: "Web 展示 / 16:9",
   duration: "30 秒",
-  style: "克制的玻璃质感、工程感、可审计",
+  style: "克制的玻璃质感、工程感、可追踪",
   guardrail: "所有素材必须标注用途和风险",
 }
 
 export const dashboardStats = [
-  { label: "持久 Agent", value: "7", icon: Sparkles },
-  { label: "正式 Artifacts", value: "17", icon: FileSearch },
+  { label: "持久 Agent", value: String(agentSkills.length), icon: Sparkles },
+  { label: "正式 Artifacts", value: String(artifacts.length), icon: FileSearch },
   { label: "Runtime Packs", value: "2", icon: Code2 },
   { label: "质量门", value: "2", icon: BadgeCheck },
 ]
@@ -468,7 +499,7 @@ export const productClaims = [
 export const sessions = [
   {
     id: "s1",
-    title: "EasyClaw 30 秒产品介绍",
+    title: "AutoDirector 30 秒产品介绍",
     source: "Web",
     model: "GPT / Codex 默认",
     messages: 18,
@@ -501,7 +532,7 @@ export const toolEvents = [
     agent: "Research",
     tool: "web.search",
     status: "done",
-    detail: "收集黑客松规则、竞品 Agent UI、视频生成约束",
+    detail: "收集产品定位、竞品 Agent UI、视频生成约束",
   },
   {
     id: "tool-2",
@@ -534,16 +565,40 @@ export const connectionOptions = [
     body: "产品默认连接入口。按 Codex CLI OAuth + PKCE 连接用户账号，refresh token 只保存在本地状态目录。",
   },
   {
-    id: "api",
-    name: "OpenAI API Key",
-    status: "备用",
-    body: "适合后端稳定跑任务。费用走用户自己的 API 项目，不等于 ChatGPT 订阅额度。",
+    id: "openai_api",
+    name: "ChatGPT / OpenAI API",
+    status: "可选",
+    body: "适合托管自动化、Responses API 和 Image API。费用走用户自己的 API 项目，不等于 ChatGPT 订阅额度。",
+  },
+  {
+    id: "anthropic",
+    name: "Claude / Anthropic API",
+    status: "可接",
+    body: "适合脚本、导演、代码和推理任务；图片生成仍需 Codex imagegen、Image API、上传或公开素材。",
+  },
+  {
+    id: "deepseek",
+    name: "DeepSeek API",
+    status: "可接",
+    body: "适合低成本研究、脚本和 reasoning 任务；通过 adapter 写入同一套 artifact，不绕过质量门。",
+  },
+  {
+    id: "qwen",
+    name: "Qwen API",
+    status: "可接",
+    body: "适合中文、代码和多语言 Agent；可走 DashScope 或 OpenAI-compatible endpoint。",
+  },
+  {
+    id: "custom_endpoint",
+    name: "Custom endpoint",
+    status: "高级",
+    body: "面向企业代理、本地 LLM gateway 或任意 OpenAI-compatible endpoint；UI 只保存选择，密钥留在本地环境变量。",
   },
   {
     id: "demo",
     name: "Demo Replay",
     status: "评审",
-    body: "黑客松现场最稳路径：完整展示多 Agent 流水线和最终包，不依赖现场模型波动。",
+    body: "现场演示最稳路径：完整展示多 Agent 流水线和最终包，不依赖现场模型波动。",
   },
 ]
 
