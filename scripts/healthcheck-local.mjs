@@ -53,7 +53,7 @@ if (existsSync("intro-site")) {
   assert(delivery.includes("场景和画面事件"), "delivery page should include scene list")
   assert(delivery.includes("素材和证据怎么审"), "delivery page should include source evidence")
   assert(delivery.includes("换一个 brief，也走同一条生产线"), "delivery page should show an alternate brief")
-  assert(delivery.includes("Smart Water Bottle Product Launch"), "delivery page should cite the general sample brief")
+  assert(delivery.includes("智能水杯产品发布"), "delivery page should cite the general sample brief")
 
   const manifest = JSON.parse(readFileSync("intro-site/demo-manifest.json", "utf8"))
   assert(manifest.publicShowcaseUrl === "https://autodirector.felixypz.me/", "demo manifest has wrong showcase URL")
@@ -66,7 +66,7 @@ assert(generalExample.brief?.includes("smart water bottle"), "general example br
 assert(generalExample.requiredPipelineChecks?.length >= 6, "general example should exercise the Agent pipeline")
 
 const appSource = readFileSync("src/App.tsx", "utf8")
-for (const providerNeedle of ["Claude / Anthropic API", "DeepSeek API", "Qwen API", "OpenAI-compatible Endpoint", "CUSTOM_MODEL_BASE_URL"]) {
+for (const providerNeedle of ["Anthropic API", "DeepSeek API", "Qwen API", "Custom Endpoint", "CUSTOM_MODEL_BASE_URL"]) {
   assert(appSource.includes(providerNeedle), `Settings UI should expose provider option ${providerNeedle}`)
 }
 

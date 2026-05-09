@@ -302,21 +302,34 @@ const modelOptions = [
   "custom-model-id",
   "local-tool-runner",
 ]
+
+function modelDisplayName(model: string) {
+  const labels: Record<string, string> = {
+    "codex-default": "默认文本模型（内部路由）",
+    "codex-coding": "代码模型（内部路由）",
+    "local-tool-runner": "本地工具执行（内部路由）",
+    "deterministic-recorder": "Recorder 规则引擎（内部路由）",
+    "openai-default": "OpenAI 默认模型",
+    "custom-model-id": "自定义模型",
+  }
+  return labels[model] ?? model
+}
+
 const agentHostOptions: Array<{ id: AgentHost; name: string; detail: string }> = [
-  { id: "codex_native", name: "Codex Native", detail: "本机持久 threads，复用 Codex/ChatGPT 登录。" },
-  { id: "codex_plugin", name: "Codex Plugin", detail: "用 MCP 工具把任务交给 Codex 插件。" },
-  { id: "openai_api", name: "API Adapter", detail: "由后端 API adapter 承载自动化。" },
-  { id: "claude_code", name: "Claude Code", detail: "外部 coding agent 执行代码和脚本任务。" },
-  { id: "custom_mcp", name: "Custom MCP", detail: "任何能读写 artifact 的外部 Agent host。" },
+  { id: "codex_native", name: "Codex Native", detail: "本机线程，复用 Codex 登录。" },
+  { id: "codex_plugin", name: "Codex Plugin", detail: "通过 MCP 交接任务。" },
+  { id: "openai_api", name: "API Adapter", detail: "后端文本模型适配。" },
+  { id: "claude_code", name: "Claude Code", detail: "外部代码 Agent。" },
+  { id: "custom_mcp", name: "Custom MCP", detail: "自定义 artifact host。" },
 ]
 const modelProviderOptions: Array<{ id: ModelProvider; name: string; detail: string; env: string }> = [
-  { id: "codex_oauth", name: "Codex / ChatGPT OAuth", detail: "默认路线：不需要 API key，复用本机 Codex 登录、image_generation 和 tool_search。", env: "codex auth login" },
-  { id: "openai_api", name: "ChatGPT / OpenAI API", detail: "用于托管自动化、Responses API、Image API 和 OpenAI-compatible model policy。", env: "OPENAI_API_KEY" },
-  { id: "anthropic_api", name: "Claude / Anthropic API", detail: "适合脚本、导演、代码任务；图片仍需 imagegen、上传或公开素材。", env: "ANTHROPIC_API_KEY" },
-  { id: "deepseek_api", name: "DeepSeek API", detail: "适合低成本研究、脚本和推理型任务；按外部 adapter 写入 artifact。", env: "DEEPSEEK_API_KEY" },
-  { id: "qwen_api", name: "Qwen API", detail: "适合中文、代码和多语言 Agent；通过 DashScope 或兼容 endpoint 接入。", env: "DASHSCOPE_API_KEY / QWEN_API_KEY" },
-  { id: "openai_compatible", name: "OpenAI-compatible Endpoint", detail: "兼容 v1/chat 或 v1/responses 的自定义模型服务。", env: "CUSTOM_MODEL_BASE_URL + CUSTOM_MODEL_API_KEY" },
-  { id: "custom_mcp", name: "Custom MCP / Manual Agent", detail: "模型由外部工具决定，AutoDirector 只负责任务、artifact 和质量门。", env: "MCP server URL" },
+  { id: "codex_oauth", name: "Codex / ChatGPT OAuth", detail: "默认：本机登录，含 imagegen 和 tool_search。", env: "codex auth login" },
+  { id: "openai_api", name: "OpenAI API", detail: "Responses / Chat / Image API。", env: "OPENAI_API_KEY" },
+  { id: "anthropic_api", name: "Anthropic API", detail: "脚本、导演、代码任务。", env: "ANTHROPIC_API_KEY" },
+  { id: "deepseek_api", name: "DeepSeek API", detail: "研究、脚本、推理任务。", env: "DEEPSEEK_API_KEY" },
+  { id: "qwen_api", name: "Qwen API", detail: "中文和代码任务。", env: "DASHSCOPE_API_KEY / QWEN_API_KEY" },
+  { id: "openai_compatible", name: "Custom Endpoint", detail: "OpenAI-compatible model server。", env: "CUSTOM_MODEL_BASE_URL + CUSTOM_MODEL_API_KEY" },
+  { id: "custom_mcp", name: "Custom MCP", detail: "外部工具自带模型路由。", env: "MCP server URL" },
 ]
 const modelProviderEnvLabels: Record<ModelProvider, string> = {
   codex_oauth: "OAuth",
@@ -408,8 +421,8 @@ function createReadOnlyBootstrap(): BootstrapState {
   ])) as Record<string, AgentModelPolicy>
   const run: RunState = {
     id: "run_public_readonly",
-    title: "Public delivery v10",
-    brief: "制作一条 30 秒新闻科普短片，要求 AutoDirector 自动跑完整 Agent pipeline，并保留 artifacts。",
+    title: "公开视频 v10",
+    brief: "制作一条 30 秒新闻科普短片，完整保留 Agent 交接和质量证据。",
     runtime: "hyperframes",
     layoutMode: "simple",
     status: "final",
@@ -438,11 +451,11 @@ function createReadOnlyBootstrap(): BootstrapState {
       createdAt: new Date(Date.now() - (seedArtifacts.length - index) * 90_000).toISOString(),
     })),
     logs: [
-      "Public read-only build: API and Agent chat disabled.",
-      "Producer created task_graph and success criteria.",
-      "Agent team completed artifact handoff trail.",
-      "Quality gate passed final package checks.",
-      "Recorder wrote run memory and reusable skill drafts.",
+      "公开只读版本：不连接后端，不改数据。",
+      "Producer 已生成任务图和通过条件。",
+      "Agent 团队已完成 artifact 交接。",
+      "Quality Gate 已通过交付包检查。",
+      "Recorder 已保存运行记忆和 skill 草稿。",
     ],
     package: {
       status: "ready",
@@ -455,24 +468,24 @@ function createReadOnlyBootstrap(): BootstrapState {
       videoAssets: [
         {
           id: "scene-news-context",
-          title: "News context plate",
+          title: "新闻背景画面",
           file: readonlyDeliveryAssets.mediaFile,
           source: "public/source evidence",
-          license: "demo package manifest",
-          purpose: "Opening conflict frame",
+          license: "交付包证据",
+          purpose: "建立冲突背景",
           risk: "verified",
-          fallback: "imagegen editorial plate",
+          fallback: "编辑风格抽象画面",
           durationSeconds: 5,
         },
         {
           id: "scene-power-map",
-          title: "Power map plate",
+          title: "治理关系画面",
           file: readonlyDeliveryAssets.mediaFile,
           source: "generated runtime",
-          license: "project source",
-          purpose: "Explain governance tension",
+          license: "项目源码",
+          purpose: "解释治理张力",
           risk: "low",
-          fallback: "abstract vector layer",
+          fallback: "抽象关系图层",
           durationSeconds: 6,
         },
       ],
@@ -485,7 +498,7 @@ function createReadOnlyBootstrap(): BootstrapState {
     settings: {
       completed: true,
       providerId: "openai_codex_oauth",
-      authStatus: "connected",
+      authStatus: "disconnected",
       modelPolicy,
       imageModel: "gpt-image-2",
       defaultRuntime: "hyperframes",
@@ -496,19 +509,7 @@ function createReadOnlyBootstrap(): BootstrapState {
       visualProvider: "codex_imagegen",
       updatedAt: now,
     },
-    openaiAccount: {
-      provider: "codex_native",
-      connectedAt: now,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-      scope: "read-only public demo",
-      clientId: "public-readonly",
-      user: {
-        email: "readonly@autodirector.demo",
-        name: "Public Demo",
-        planType: "read-only",
-        chatgptAccountId: null,
-      },
-    },
+    openaiAccount: null,
     activeRunId: run.id,
     activeRun: run,
     runs: [run],
@@ -555,7 +556,7 @@ function createReadOnlyBootstrap(): BootstrapState {
         appServer: false,
       },
       matrix: {},
-      policy: "Public read-only build: no API calls, no Agent chat, no execution.",
+      policy: "公开只读版本：无 API 调用，无 Agent 对话，无执行权限。",
     },
   }
 }
@@ -742,6 +743,11 @@ function App() {
           run={visibleRun}
           onOpenSetup={() => setSetupOpen(true)}
         />
+        {READONLY_PUBLIC_DEMO ? (
+          <div className="readonly-banner" role="status">
+            作品展示模式：Agent 对话和视频生成已禁用。下载源码包本地运行可体验完整自动化。
+          </div>
+        ) : null}
         <main className="producer-zone">
           {activeView === "agents" ? (
             <AgentTeamView workers={bootstrap.workers} onInspect={(agentId) => {
@@ -887,8 +893,8 @@ function LoadingShell() {
   return (
     <div className="grid min-h-screen place-items-center bg-background text-foreground">
       <div className="rounded-xl border border-border bg-surface p-5">
-        <SectionLabel>AUTODIRECTOR BOOT</SectionLabel>
-        <div className="mt-2 font-mono text-sm text-primary">Loading local orchestrator...</div>
+        <SectionLabel>AutoDirector</SectionLabel>
+        <div className="mt-2 font-mono text-sm text-primary">正在打开控制台...</div>
       </div>
     </div>
   )
@@ -911,11 +917,11 @@ function GlobalHeader({
   onOpenSetup: () => void
 }) {
   const runBlocked = run?.status === "blocked" || run?.package?.status === "blocked"
-  const runStateLabel = runBlocked ? "已阻塞" : run?.status === "final" ? "已交付" : run ? "自动化中" : "草稿"
-  const runIdLabel = run?.id ? run.id.replace(/^run_/, "#") : "no active run"
+  const runStateLabel = readOnly ? "静态演示" : runBlocked ? "已阻塞" : run?.status === "final" ? "已交付" : run ? "自动化中" : "草稿"
+  const runIdLabel = run?.id ? run.id.replace(/^run_/, "#") : "未开始"
   const activeStep = run ? timeline[Math.min(run.completedSteps ?? 0, timeline.length - 1)] : null
   const headerTitle = readOnly ? "作品展示控制台" : "自动化制作控制台"
-  const headerMeta = run ? `${activeStep?.label ?? "Pipeline"} · ${runStateLabel}` : "等待 brief"
+  const headerMeta = readOnly ? "公开视频 · 只读" : run ? `${activeStep?.label ?? "Pipeline"} · ${runStateLabel}` : "等待 brief"
   return (
     <header className="control-header">
       <div className="header-project-block">
@@ -940,9 +946,9 @@ function GlobalHeader({
           <KeyRound className="size-3.5" aria-hidden="true" />
           {readOnly ? "只读" : "连接"}
         </button>
-        <div className="automation-pill" aria-label="自动化模式">
+        <div className="automation-pill" aria-label={readOnly ? "演示模式" : "自动化模式"}>
           <Check className="size-3.5" aria-hidden="true" />
-          自动
+          {readOnly ? "静态演示" : "自动"}
         </div>
       </div>
     </header>
@@ -1009,7 +1015,7 @@ function ProjectSidebar({
             <SectionLabel>历史</SectionLabel>
             <span>{historyRuns.length}</span>
           </button>
-          <Button size="icon" className="size-7 rounded-lg" onClick={onCreateRun} disabled={readOnly} aria-label={readOnly ? "只读展示不可新建项目" : "新建项目"}>
+          <Button size="icon" className="size-7 rounded-lg" onClick={onCreateRun} disabled={readOnly} aria-label={readOnly ? "演示模式" : "新建项目"}>
             <Plus className="size-3.5" aria-hidden="true" />
           </Button>
         </div>
@@ -1180,12 +1186,12 @@ function ProducerWorkbench({
               ) : (
                 <>
                   {visibleUserBrief ? <UserMessage>{visibleUserBrief}</UserMessage> : null}
-                  <ProducerMessage timestamp="now">
-                    <p>收到。我会把需求拆成可追踪的视频生产流水线，只由 Producer 对外沟通，其他 Agent 在后台按 artifact 交接。</p>
+                  <ProducerMessage timestamp="现在">
+                    <p>收到。我会把需求拆成可追踪的视频生产流水线，只由 Producer 对外沟通，其他 Agent 在后台按产物交接。</p>
                     <PlanCard completedSteps={completedSteps} progressValue={progressValue} />
                   </ProducerMessage>
-                  <ProducerMessage timestamp={runBlocked ? "blocked" : "pipeline"}>
-                    <p>{activeRun ? `当前 Run: ${activeRun.id}。下一步：${activeStep?.managerLine ?? "准备交付"}` : "还没有 active run。点 New 会先进入空白 Draft，Producer 会问清楚需求；确认后再开始生产。"}</p>
+                  <ProducerMessage timestamp={runBlocked ? "已阻塞" : "流水线"}>
+                    <p>{activeRun ? `当前项目：${activeRun.id}。下一步：${activeStep?.managerLine ?? "准备交付"}` : "还没有项目。点“新建”后 Producer 会先问清楚需求，再开始制作。"}</p>
                     {runBlocked ? (READONLY_PUBLIC_DEMO ? <BlockedImagegenReadOnlyNotice run={activeRun} /> : <BlockedImagegenNotice run={activeRun} />) : null}
                     <HandoffCard step={activeStep} />
                   </ProducerMessage>
@@ -1226,8 +1232,8 @@ function WorkspaceTimeline({ completedSteps, draftOpen }: { completedSteps: numb
   return (
     <div className="workspace-timeline" aria-label="流水线时间线">
       <div className="workspace-timeline-head">
-        <SectionLabel>Timeline</SectionLabel>
-        <span>{draftOpen ? "waiting for start" : `${Math.min(completedSteps, timeline.length)} / ${timeline.length}`}</span>
+        <SectionLabel>制作进度</SectionLabel>
+        <span>{draftOpen ? "待开始" : `${Math.min(completedSteps, timeline.length)} / ${timeline.length}`}</span>
       </div>
       <div className="workspace-timeline-track">
         {timeline.map((step, index) => (
@@ -1262,6 +1268,39 @@ function formatDuration(seconds?: number | null) {
 }
 
 function ProductionEtaCard({ run, draftOpen }: { run: RunState | null; draftOpen: boolean }) {
+  if (READONLY_PUBLIC_DEMO) {
+    const ready = run?.status === "final"
+    return (
+      <div className="production-eta" aria-label="演示进度">
+        <div className="production-eta-primary">
+          <span className="production-eta-icon" aria-hidden="true">
+            <Timer size={16} />
+          </span>
+          <div>
+            <SectionLabel>演示状态</SectionLabel>
+            <strong>{ready ? "公开视频已交付" : "只读预览"}</strong>
+          </div>
+        </div>
+        <div className="production-eta-grid">
+          <div>
+            <span>模式</span>
+            <strong>只读</strong>
+          </div>
+          <div>
+            <span>数据</span>
+            <strong>已脱敏</strong>
+          </div>
+          <div>
+            <span>交付</span>
+            <strong>{ready ? "可审阅" : "待打开"}</strong>
+          </div>
+        </div>
+        <div className="production-eta-meter" aria-hidden="true">
+          <span style={{ width: ready ? "100%" : "45%" }} />
+        </div>
+      </div>
+    )
+  }
   const difficulty = run?.difficultyEstimate
   const telemetry = run?.tokenTelemetry
   const progress =
@@ -1284,13 +1323,13 @@ function ProductionEtaCard({ run, draftOpen }: { run: RunState | null; draftOpen
           : "等待 Agent 输出"
 
   return (
-    <div className="production-eta" aria-label="Token speed and ETA">
+    <div className="production-eta" aria-label="生成速度和预计时间">
       <div className="production-eta-primary">
         <span className="production-eta-icon" aria-hidden="true">
           <Timer size={16} />
         </span>
         <div>
-          <SectionLabel>ETA</SectionLabel>
+          <SectionLabel>预计时间</SectionLabel>
           <strong>{etaText}</strong>
         </div>
       </div>
@@ -1339,12 +1378,12 @@ function LiveActivityFeed({
   const primary = items[0]
   if (!primary) return null
   return (
-    <div className="live-feed" aria-label="Producer live stream">
+    <div className="live-feed" aria-label="Producer 活动流">
       <div className="live-feed-head">
-        <SectionLabel>Activity</SectionLabel>
+        <SectionLabel>活动</SectionLabel>
         <span className={cn("live-feed-status", feedState === "streaming" && "live-feed-status--streaming", feedState === "complete" && "live-feed-status--complete", feedState === "blocked" && "live-feed-status--blocked")}>
           <span aria-hidden="true" />
-          {primary.phase}
+          {livePhaseLabel(primary.phase)}
         </span>
       </div>
       <div className="live-feed-stream">
@@ -1358,6 +1397,27 @@ function LiveActivityFeed({
   )
 }
 
+function livePhaseLabel(phase: string) {
+  const labels: Record<string, string> = {
+    thinking: "理解需求",
+    handoff: "交接中",
+    ready: "就绪",
+    start: "已创建",
+    deploying: "派发中",
+    running: "推进中",
+    artifact: "写产物",
+    done: "已完成",
+    packaging: "打包中",
+    preflight: "质检中",
+    blocked: "需处理",
+    rendering: "渲染中",
+    package: "交付包",
+    complete: "完成",
+    event: "事件",
+  }
+  return labels[phase] ?? phase
+}
+
 function buildLiveFeed(run: RunState | null, draftOpen: boolean, completedSteps: number, events: BootstrapState["events"]): LiveFeedItem[] {
   if (draftOpen) {
     return [
@@ -1365,14 +1425,14 @@ function buildLiveFeed(run: RunState | null, draftOpen: boolean, completedSteps:
         id: "draft-thinking",
         phase: "thinking",
         agent: "Producer",
-        detail: "监听 brief，先不执行制作 Agent",
+        detail: "先理解需求，制作团队暂不启动",
         status: "streaming",
       },
       {
         id: "draft-ready",
         phase: "handoff",
         agent: "Producer",
-        detail: "确认后部署 Research、Story Director、Asset、Video Engineer 等持久 Agent",
+        detail: "确认后启动研究、脚本、素材、工程和质检角色",
         status: "queued",
       },
     ]
@@ -1384,7 +1444,7 @@ function buildLiveFeed(run: RunState | null, draftOpen: boolean, completedSteps:
         id: "idle",
         phase: "ready",
         agent: "Producer",
-        detail: "新建 session 后开始收集 brief",
+        detail: "新建项目后开始收集需求",
         status: "queued",
       },
     ]
@@ -1399,7 +1459,7 @@ function buildLiveFeed(run: RunState | null, draftOpen: boolean, completedSteps:
             id: "imagegen-blocked",
             phase: "blocked",
             agent: "Asset",
-            detail: "OAuth imagegen 主视觉不足，Render 被硬门禁拦截",
+            detail: "缺少合格主视觉，渲染已暂停",
             status: "queued",
           },
         ]
@@ -1456,21 +1516,21 @@ function eventToLiveItem(event: BootstrapState["events"][number]): LiveFeedItem 
   const agent = agentSkills.find((item) => item.id === agentId)?.shortName ?? (agentId ? agentId : "Producer")
 
   const typeMap: Record<string, { phase: string; detail: string; status: LiveFeedItem["status"] }> = {
-    "run.created": { phase: "start", detail: "创建 run，写入 project_brief", status: "done" },
+    "run.created": { phase: "start", detail: "创建项目并写入需求", status: "done" },
     "task.started": { phase: "deploying", detail: `${stepId ?? "task"} 已派发给 ${agent}`, status: "streaming" },
     "automation.running": { phase: "running", detail: "Producer 正在自动推进流水线", status: "streaming" },
     "agent.thinking": { phase: "thinking", detail: `${agent} 正在读取输入和成功标准`, status: "streaming" },
     "handoff.started": { phase: "handoff", detail: `Producer 交接给 ${agent}`, status: "streaming" },
-    "artifact.writing": { phase: "artifact", detail: `写入 ${outputId ?? "artifact"}`, status: "streaming" },
-    "task.completed": { phase: "done", detail: `${agent} 交付 ${outputId ?? "artifact"}`, status: "done" },
+    "artifact.writing": { phase: "artifact", detail: `写入 ${outputId ?? "产物"}`, status: "streaming" },
+    "task.completed": { phase: "done", detail: `${agent} 交付 ${outputId ?? "产物"}`, status: "done" },
     "automation.packaging": { phase: "packaging", detail: "流水线完成，开始生成最终交付包", status: "streaming" },
-    "package.preflight": { phase: "preflight", detail: "自动质量门正在检查 imagegen / 素材门禁", status: "streaming" },
+    "package.preflight": { phase: "preflight", detail: "自动质量门正在检查视觉素材", status: "streaming" },
     "imagegen.blocked": { phase: "blocked", detail: "缺少 OAuth imagegen 主视觉，停止渲染", status: "queued" },
     "package.rendering": { phase: "rendering", detail: "Render Agent 正在导出 final.mp4", status: "streaming" },
     "package.writing": { phase: "package", detail: "写入源码包、素材说明、质检报告和日志", status: "streaming" },
-    "package.blocked": { phase: "blocked", detail: "阻塞包已生成，不包含假 final.mp4", status: "queued" },
+    "package.blocked": { phase: "blocked", detail: "交付暂停：缺少合格素材，不生成占位成片", status: "queued" },
     "package.ready": { phase: "ready", detail: "最终交付包已生成", status: "done" },
-    "automation.blocked": { phase: "blocked", detail: "自动流水线停在素材门禁", status: "queued" },
+    "automation.blocked": { phase: "blocked", detail: "自动流水线暂停在素材检查", status: "queued" },
     "automation.complete": { phase: "complete", detail: "自动流水线完成", status: "done" },
   }
   const mapped = typeMap[event.type] ?? { phase: "event", detail: event.type, status: "done" as const }
@@ -1517,10 +1577,10 @@ function InspectorPanel({
 }) {
   const inspectorOptions: Array<{ value: InspectorMode; label: string; hint: string }> = [
     { value: "agent", label: "当前 Agent", hint: selectedAgent.shortName },
-    { value: "artifact", label: "产物清单", hint: `${run?.artifacts.length ?? 0} items` },
+    { value: "artifact", label: "产物清单", hint: `${run?.artifacts.length ?? 0} 项` },
     { value: "runtime", label: "运行计划", hint: runtimeName },
-    { value: "quality", label: "自动质检", hint: run?.status === "final" ? "done" : "checking" },
-    { value: "final", label: "最终交付", hint: run?.package ? "package ready" : "waiting" },
+    { value: "quality", label: "自动质检", hint: run?.status === "final" ? "已通过" : "检查中" },
+    { value: "final", label: "最终交付", hint: run?.package ? "已打包" : "待交付" },
   ]
   const selectedOption = inspectorOptions.find((option) => option.value === mode) ?? inspectorOptions[0]
 
@@ -1579,7 +1639,7 @@ function AgentDetailView({ agent, worker }: { agent: (typeof agentSkills)[number
       <InfoBlock title="模型策略">
         <div className="metadata-grid">
           <span>模型</span>
-          <strong>{worker?.model ?? "codex-default"}</strong>
+          <strong>{modelDisplayName(worker?.model ?? "codex-default")}</strong>
           <span>推理</span>
           <strong>{worker?.thinkingLabel ?? worker?.thinkingLevel ?? "中"}</strong>
           <span>能力</span>
@@ -1646,14 +1706,14 @@ function ArtifactPreview({ artifact, artifacts }: { artifact: ArtifactRecord | n
 function RuntimePlanView({ run, runtimeName }: { run: RunState | null; runtimeName: string }) {
   return (
     <div className="space-y-4">
-      <InfoBlock title="Runtime Plan">
+      <InfoBlock title="运行计划">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">{runtimeName}</h2>
           <Badge variant="outline" className="rounded-md">{run?.runtime ?? "hyperframes"}</Badge>
         </div>
-        <p className="mt-2">Video Engineer locks scene specs before writing code.</p>
+        <p className="mt-2">先锁定分镜和画面证据，再进入视频工程。</p>
       </InfoBlock>
-      <InfoBlock title="Scene Breakdown">
+      <InfoBlock title="分镜拆解">
         <div className="space-y-1.5">
           {timeline.slice(0, 6).map((step, index) => (
             <div key={step.id} className="runtime-row">
@@ -1664,8 +1724,8 @@ function RuntimePlanView({ run, runtimeName }: { run: RunState | null; runtimeNa
           ))}
         </div>
       </InfoBlock>
-      <InfoBlock title="Validation">
-        <BulletList items={runtimeName === "HyperFrames" ? ["DESIGN.md gate", "layout before animation", "hyperframes lint / validate / inspect"] : ["React composition", "still-frame check", "remotion render"]} />
+      <InfoBlock title="验证">
+        <BulletList items={runtimeName === "HyperFrames" ? ["设计稿先过关", "先排版再动效", "渲染前自动检查"] : ["React 合成", "静帧检查", "Remotion 导出"]} />
       </InfoBlock>
     </div>
   )
@@ -1677,7 +1737,7 @@ function QualityGateView({ run }: { run: RunState | null }) {
     <div className="space-y-4">
       <InfoBlock title="自动质检报告">
         <Badge variant="outline" className={cn("rounded-md", blocked ? "text-destructive" : run?.status === "final" ? "text-secondary" : "text-primary")}>
-          {blocked ? "阻塞：imagegen 门禁" : run?.status === "final" ? "已通过" : "检查中"}
+          {blocked ? "缺少合格主视觉" : run?.status === "final" ? "已通过" : "检查中"}
         </Badge>
         <div className="mt-3 space-y-2">
           <CheckRow label="OAuth imagegen 主视觉存在" done={run?.status === "final"} />
@@ -1688,7 +1748,7 @@ function QualityGateView({ run }: { run: RunState | null }) {
         </div>
       </InfoBlock>
       <InfoBlock title="局部返修">
-        <p>{blocked ? "先让 Imagegen Agent 生成 blocked_imagegen_request.json 里要求的 5 张图并注册，然后再重新进入渲染。" : run?.status === "final" ? "没有阻塞项，最终交付包已就绪。" : "自动质量门只生成局部返修任务，不重启整条流水线。"}</p>
+        <p>{blocked ? "先补齐 5 张合格主视觉并登记，再重新进入渲染。" : run?.status === "final" ? "没有阻塞项，最终交付包已就绪。" : "自动质量门只生成局部返修任务，不重启整条流水线。"}</p>
       </InfoBlock>
     </div>
   )
@@ -2001,11 +2061,11 @@ function SettingsView({
         <div>
           <SectionLabel>设置</SectionLabel>
           <h1>控制台设置</h1>
-          <p>连接、模型供应商、素材、运行时、Agent。</p>
+          <p>配置 Agent 接入、模型来源与运行时环境。</p>
         </div>
         <Button className="settings-primary-action" onClick={onConnect} disabled={readOnly}>
           <KeyRound data-icon="inline-start" aria-hidden="true" />
-          {readOnly ? "只读展示" : oauthConnected ? "OAuth 已连接" : "连接 OpenAI"}
+          {readOnly ? "演示模式" : oauthConnected ? "OAuth 已连接" : "连接 OpenAI"}
         </Button>
       </div>
 
@@ -2026,7 +2086,7 @@ function SettingsView({
       <div className="settings-command-strip" aria-label="当前设置概览">
         <div>
           <span>Agent</span>
-          <strong>{agentHostOptions.find((option) => option.id === (settings.agentHost ?? "codex_native"))?.name ?? "Codex Native Kernel"}</strong>
+          <strong>{agentHostOptions.find((option) => option.id === (settings.agentHost ?? "codex_native"))?.name ?? "Codex Native"}</strong>
         </div>
         <div>
           <span>模型</span>
@@ -2083,7 +2143,7 @@ function SettingsView({
         <section className="setting-card setting-card--wide setting-card--compact setting-card--connect">
           <div>
             <SectionLabel>Agent</SectionLabel>
-            <h2>Agent Host</h2>
+            <h2>Agent 承载</h2>
           </div>
           <div className="setting-choice-list">
             {agentHostOptions.map((option) => (
@@ -2178,7 +2238,7 @@ function SettingsView({
           <div className="model-policy-list" aria-label="Agent 模型策略">
             {agentSkills.map((agent) => {
               const policy = settings.modelPolicy?.[agent.id] ?? { model: "codex-default", thinkingLevel: "medium", thinkingLabel: "中", capabilities: [] }
-              const capabilitiesLabel = policy.capabilities?.length ? policy.capabilities.join(", ") : "standard"
+              const capabilitiesLabel = policy.capabilities?.length ? policy.capabilities.join(", ") : "标准"
               return (
                 <article key={agent.id} className="model-policy-card">
                   <div className="model-policy-agent">
@@ -2196,7 +2256,7 @@ function SettingsView({
                       disabled={readOnly}
                       onChange={(event) => updateAgentPolicy(agent.id, { model: event.target.value })}
                     >
-                      {modelOptions.map((model) => <option key={model} value={model}>{model}</option>)}
+                      {modelOptions.map((model) => <option key={model} value={model}>{modelDisplayName(model)}</option>)}
                     </select>
                   </label>
                   <label className="model-policy-control">
@@ -2244,9 +2304,9 @@ function SettingsView({
 
         <section className="setting-card setting-card--render">
           <div>
-            <SectionLabel>密度</SectionLabel>
-            <h2>界面密度</h2>
-            <p>诊断密度。</p>
+            <SectionLabel>界面</SectionLabel>
+            <h2>界面模式</h2>
+            <p>选择控制台信息量。</p>
           </div>
           <div className="setting-choice-list">
             {(["simple", "power"] as const).map((mode) => (
@@ -2257,8 +2317,8 @@ function SettingsView({
                 disabled={readOnly}
                 onClick={() => onSettings({ layoutMode: mode })}
               >
-                <span>{mode === "simple" ? "标准模式" : "专家模式"}</span>
-                <span>{mode === "simple" ? "聚焦制作界面" : "完整诊断信息"}</span>
+                <span>{mode === "simple" ? "简洁" : "完整信息"}</span>
+                <span>{mode === "simple" ? "聚焦制作界面" : "显示诊断信息"}</span>
               </button>
             ))}
           </div>
@@ -2268,16 +2328,9 @@ function SettingsView({
           <div>
             <SectionLabel>自动化</SectionLabel>
             <h2>自动执行</h2>
-            <p>自动推进；质量门失败才阻塞。</p>
+            <p>质量门通过才继续；失败停在对应 Agent。</p>
           </div>
-          <div className="automation-policy-preview">
-            <span>web/search</span>
-            <strong>自动</strong>
-            <span>render/code</span>
-            <strong>自动</strong>
-            <span>质量门</span>
-            <strong>自动</strong>
-          </div>
+          <p className="automation-policy-preview">默认自动推进。素材、渲染或质检不达标时，只返修对应环节。</p>
         </section>
         </div>
     </section>
@@ -2600,11 +2653,11 @@ function Onboarding({
             <div className="terminal-dot-row"><span /><span /><span /></div>
             <pre>{`$ npm ci
 $ npm run build
-? Agent 承载: ${agentHostOptions.find((option) => option.id === agentHost)?.name ?? "Codex Native Kernel"}
+? Agent 承载: ${agentHostOptions.find((option) => option.id === agentHost)?.name ?? "Codex Native"}
 ? 模型供应商: ${modelProviderOptions.find((option) => option.id === modelProvider)?.name ?? "Codex / ChatGPT OAuth"}
 ? 视觉来源: ${visualProviderOptions.find((option) => option.id === visualProvider)?.name ?? "Codex imagegen"}
 ? 运行时: ${runtime === "hyperframes" ? "HyperFrames" : "Remotion"}
-? 界面密度: ${layoutMode === "simple" ? "标准" : "专家"}
+? 界面模式: ${layoutMode === "simple" ? "简洁" : "完整信息"}
 $ npm start`}</pre>
           </div>
 
@@ -2635,7 +2688,7 @@ $ npm start`}</pre>
             <div className="setup-card">
               <SectionLabel>Agent 承载</SectionLabel>
               <h2>谁来承载 Producer 和 Agent</h2>
-              <p>推荐用 Codex Native Kernel：本机 Codex app-server 会为 Producer 和每个 Agent 保留独立 thread，直接复用用户的 ChatGPT/Codex 登录。</p>
+              <p>推荐用 Codex Native：本机 Codex 服务会为 Producer 和每个 Agent 保留独立线程，复用用户的 ChatGPT/Codex 登录。</p>
               <div className="mt-4 grid gap-2 md:grid-cols-2">
                 {agentHostOptions.map((option) => (
                   <button key={option.id} className={cn("choice-row", agentHost === option.id && "choice-row--active")} onClick={() => setAgentHost(option.id)} type="button">
@@ -2665,7 +2718,7 @@ $ npm start`}</pre>
             <div className="setup-card">
               <SectionLabel>视觉来源</SectionLabel>
               <h2>图片和导图从哪里来</h2>
-              <p>只有 Native Kernel / Plugin / API / 上传可以通过 imagegen 类视觉门禁；其他模式不会影响脚本、代码、渲染，但不能伪造生成图。</p>
+              <p>只有 Native、Plugin、API 或上传素材可以通过视觉质量门；其他模式不会影响脚本、代码和渲染，但不能伪造生成图。</p>
               <div className="mt-4 grid gap-2 md:grid-cols-2">
                 {visualProviderOptions.map((option) => (
                   <button key={option.id} className={cn("choice-row", visualProvider === option.id && "choice-row--active")} onClick={() => setVisualProvider(option.id)} type="button">
@@ -2697,14 +2750,14 @@ $ npm start`}</pre>
           ) : null}
           {step === 4 ? (
             <div className="setup-card">
-              <SectionLabel>界面密度</SectionLabel>
-              <h2>选择工作台密度</h2>
+              <SectionLabel>界面模式</SectionLabel>
+              <h2>选择工作台信息量</h2>
               <p>后续可在设置里改。</p>
               <div className="mt-4 grid gap-2 md:grid-cols-2">
                 {(["simple", "power"] as const).map((value) => (
                   <button key={value} className={cn("choice-row", layoutMode === value && "choice-row--active")} onClick={() => setLayoutMode(value)} type="button">
-                    <span>{value === "simple" ? "标准模式" : "专家模式"}</span>
-                    <span>{value === "simple" ? "清爽控制塔" : "完整调试面板"}</span>
+                    <span>{value === "simple" ? "简洁" : "完整信息"}</span>
+                    <span>{value === "simple" ? "聚焦制作界面" : "显示诊断信息"}</span>
                   </button>
                 ))}
               </div>

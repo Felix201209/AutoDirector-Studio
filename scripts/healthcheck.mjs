@@ -111,15 +111,15 @@ const controlUiPolishNeedles = [
   "视频交付室",
   "当前设置概览",
   "接入配置",
-  "Agent Host",
+  "Agent 承载",
   "模型供应商",
   "模型来源",
-  "Claude / Anthropic API",
+  "Anthropic API",
   "DeepSeek API",
   "Qwen API",
-  "OpenAI-compatible Endpoint",
+  "Custom Endpoint",
   "CUSTOM_MODEL_BASE_URL",
-  "Public delivery v10",
+  "公开视频 v10",
   "流水线时间轴",
   "工具控制台",
 ]
@@ -208,7 +208,7 @@ function assertControlUiViewManifest(manifest, label) {
 async function assertPublicControlUiViewsReachable(label) {
   for (const href of controlUiDirectViewLinks) {
     const html = await fetchText(new URL(href, `${publicUrl}/`).toString())
-    assert(html.includes("AutoDirector Control Room"), `${label} should serve Control UI for ${href}`)
+    assert(html.includes("AutoDirector 控制台"), `${label} should serve Control UI for ${href}`)
     assert(!html.includes("/api/"), `${label} ${href} should stay static and not link to backend API`)
   }
 }
@@ -223,8 +223,8 @@ function assertHomeDemoPresent(html, label) {
   assert(html.includes("多 Agent") && html.includes("视频制作团队"), `${label} should open with the product-specific multi-agent headline`)
   assert(html.includes("持久岗位"), `${label} should expose the agent-team size in the first viewport`)
   assert(html.includes("31s"), `${label} should expose the public film duration proof metric`)
-  assert(html.includes("157"), `${label} should expose the source package proof metric`)
-  assert(html.includes("无后端 API"), `${label} should expose the static public-site proof metric`)
+  assert(html.includes("源码包边界"), `${label} should expose the source package boundary metric`)
+  assert(html.includes("静态展示站点"), `${label} should expose the static public-site proof metric`)
   assertNoPatterns(html, label, stalePublicAgentPatterns)
 }
 
@@ -325,7 +325,7 @@ for (const page of ["team.html", "pipeline.html", "details.html", "delivery.html
 }
 
 const publicControlUi = await fetchText(`${publicUrl}/control-ui/`)
-assert(publicControlUi.includes("AutoDirector Control Room"), "public control-ui is missing the React control room shell")
+assert(publicControlUi.includes("AutoDirector 控制台"), "public control-ui is missing the React control room shell")
 assert(publicControlUi.includes("/control-ui/assets/"), "public control-ui is missing built asset links")
 assert(!publicControlUi.includes("/api/"), "public control-ui HTML should not link to backend API")
 const publicControlAssets = [...publicControlUi.matchAll(/(?:src|href)="([^"]*\/control-ui\/assets\/[^"]+\.(?:js|css))"/g)].map((match) => match[1])

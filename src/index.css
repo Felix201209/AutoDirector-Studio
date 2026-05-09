@@ -182,6 +182,18 @@ p {
     rgba(16, 15, 21, 0.2);
 }
 
+.readonly-banner {
+  margin: 10px clamp(0.85rem, 1.2vw, 1.45rem) 0;
+  border: 1px solid rgba(39, 37, 30, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.68);
+  padding: 9px 12px;
+  color: var(--muted-foreground);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  box-shadow: 0 14px 40px rgba(33, 41, 44, 0.08);
+}
+
 .project-sidebar,
 .producer-zone,
 .inspector-panel,
@@ -5636,7 +5648,10 @@ button[class*="bg-primary"],
 }
 
 .automation-policy-preview {
-  display: grid;
+  display: block;
+  color: var(--muted-foreground);
+  font-size: 0.82rem;
+  line-height: 1.6;
 }
 
 .automation-policy-preview span,

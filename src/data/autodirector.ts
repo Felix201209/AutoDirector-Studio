@@ -221,8 +221,8 @@ export const agentSkills: AgentSkill[] = [
     shortName: "Recorder",
     role: "工作记录 / Skill 沉淀",
     icon: FileSearch,
-    mission: "旁路记录每次工作，把可复用经验沉淀成后续可用的 skill 草稿。",
-    skillStack: ["recorder_log.jsonl", "Run Memory", "Skill Suggestions", "Generated SKILL.md", "非阻塞写入"],
+    mission: "同步记录每次交接，把可复用经验沉淀成后续可用的技能草稿。",
+    skillStack: ["recorder_log.jsonl", "Run Memory", "Skill Suggestions", "Generated SKILL.md", "同步写入"],
     how: [
       "监听 run 创建、任务开始、artifact 保存、素材登记和打包事件。",
       "用确定性模板写 recorder_summary、skill_suggestions 和 generated_skills。",
@@ -319,7 +319,7 @@ export const artifacts: Artifact[] = [
   },
   {
     id: "runtime_plan",
-    title: "Runtime Plan",
+    title: "运行计划",
     owner: "Programmer",
     type: "json",
     summary: "默认 Remotion 稳定输出，HyperFrames 作为视觉增强路径。",
@@ -491,7 +491,7 @@ export const productClaims = [
   },
   {
     title: "稳定优先",
-    body: "artifact schema、runtime plan、自动质量门让生成过程可控可复现。",
+    body: "产物格式、运行计划、自动质量门让生成过程可控可复现。",
     icon: ShieldCheck,
   },
 ]

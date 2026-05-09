@@ -11,7 +11,7 @@ AutoDirector is built for the EasyClaw AI Agent Hackathon. The public website is
 5. Open the read-only Control UI at `/control-ui/`.
 6. Use the source ZIP to review the local server, React UI, Agent skills, packaging scripts, and verification commands.
 
-For a non-news, non-public-figure sample, inspect `examples/smart-water-bottle/brief.json` and its `evidence-plan.json`.
+For a second scenario, inspect `examples/smart-water-bottle/brief.json` and its `evidence-plan.json`.
 
 ## Review Checklist
 
@@ -76,13 +76,12 @@ The source ZIP contains:
 - MCP/OAuth route implementation
 - Codex Native Agent orchestration
 - Agent skills and documentation
-- Public showcase HTML/CSS/JS source and `intro-site/demo-manifest.json`
 - Offline smoke / healthcheck scripts
 - Source package builder
 - Existing-v10 package wrapper (`npm run package:v10-existing`)
 - General example brief and evidence plan under `examples/smart-water-bottle/`
 
-It intentionally excludes public videos, audio, screenshots, generated delivery packages, built public Control UI JS/CSS assets, local state, dependency folders, and machine-specific caches. The root `index.html` is retained because it is required by the runnable Vite app.
+It intentionally excludes the public showcase site, public videos, audio, screenshots, generated delivery packages, built Control UI assets, local state, dependency folders, and machine-specific caches. The root `index.html` is retained because it is required by the runnable Vite app.
 
 ## Known limitations
 
