@@ -6301,3 +6301,51 @@ button[class*="bg-primary"],
     grid-column: 1 / -1;
   }
 }
+
+/* Mobile nav polish: keep every section discoverable without opening a menu. */
+@media (max-width: 700px) {
+  .control-shell {
+    --fluid-sidebar: 74px;
+    grid-template-columns: var(--fluid-sidebar) minmax(0, 1fr) !important;
+  }
+
+  .project-sidebar {
+    width: var(--fluid-sidebar);
+    padding: 10px 7px;
+  }
+
+  .nav-section {
+    width: 100%;
+  }
+
+  .side-nav-row {
+    width: 100% !important;
+    min-height: 50px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    padding: 5px 3px;
+  }
+
+  .side-nav-row span {
+    display: block !important;
+    overflow: hidden;
+    max-width: 100%;
+    color: inherit;
+    font-size: 0.64rem;
+    font-weight: 700;
+    line-height: 1.05;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .chat-input {
+    left: calc(var(--fluid-sidebar) + 8px) !important;
+  }
+
+  .header-project-block strong,
+  .header-project-meta {
+    max-width: calc(100vw - var(--fluid-sidebar) - 138px);
+  }
+}

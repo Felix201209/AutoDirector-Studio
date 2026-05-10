@@ -228,7 +228,7 @@ AutoDirector is built around a simple product promise: turn a loose video brief 
 - A runnable product UI.
 - A reproducible one-click workflow.
 - A downloadable final package and reviewable source project.
-- A final video that is generated from local video assets, not a static placeholder.
+- A final video with traceable local assets and quality evidence.
 - A visible automation mode, setup wizard, final package room, and persistent Agent artifact trail.
 
 Submission artifacts:
@@ -280,7 +280,7 @@ The source ZIP also includes `examples/smart-water-bottle/brief.json` and `examp
 - Public package: `https://autodirector.felixypz.me/assets/musk-altman-agentteam-v10-package.zip`
 - Video probe: `720x1280`, `31.1s`, video stream plus audio stream.
 - Evidence files in package: `judging_readme.md`, `source_project.zip`, `asset_manifest.json`, `runtime_plan.json`, `research_pack.json`, `citations.md`, `quality_report.md`, `run_log.jsonl`, `recorder_log.jsonl`, `recorder_summary.md`, `skill_suggestions.json`, `generated_skills/*/SKILL.md`, plus the v10 video, hash report, sync/quality JSON, caption blocks, voice-screen map, music report, and render script.
-- Quality behavior: offline smoke verifies the portable local path; full smoke verifies that native/OAuth Agent mode waits for artifact submission, can advance a complete Producer -> Research -> Director -> Asset -> Programmer -> Render -> Quality artifact chain, and blocks fake `final.mp4` when OAuth imagegen hero assets are missing.
+- Quality behavior: offline smoke verifies the portable local path; full smoke verifies that native/OAuth Agent mode waits for artifact submission, can advance a complete Producer -> Research -> Director -> Asset -> Programmer -> Render -> Quality artifact chain, and blocks publication when required image assets are missing.
 
 Verification commands:
 
@@ -297,7 +297,7 @@ npm run verify:full
 - Public website is read-only by design.
 - Full native Agent run requires local Codex/ChatGPT login and may use quota.
 - Public demo assets are hosted separately from the source ZIP to keep the submitted code package small.
-- If image generation is unavailable, AutoDirector blocks final packaging instead of faking a final video.
+- If image generation is unavailable, AutoDirector blocks final packaging instead of publishing an incomplete video.
 - Full native mode can create and modify files inside the selected workspace; evaluate it in a dedicated project directory.
 - Local state files are machine-bound. Do not copy `.autodirector/state.json` between devices; rerun setup on the target machine.
 

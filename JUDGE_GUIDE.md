@@ -19,7 +19,7 @@ For a second scenario, inspect `examples/smart-water-bottle/brief.json` and its 
 - Business scenario: short-video production from user brief to packaged delivery.
 - Runnable product: local React UI, Node server, MCP/OAuth routes, Codex Native orchestration, and offline smoke tests.
 - Evidence quality: final video plus `source-project.json`, `voice_screen_map.json`, `quality_report.json`, `sync_quality.json`, and render script.
-- Alternate brief: the source ZIP includes `examples/smart-water-bottle/brief.json` plus `evidence-plan.json` to show the same pipeline on a product-launch scenario without fake rendered media.
+- Alternate brief: the source ZIP includes `examples/smart-water-bottle/brief.json` plus `evidence-plan.json` to show the same pipeline on a product-launch scenario without implying a second rendered delivery.
 
 ## Run locally
 
@@ -92,7 +92,7 @@ The control UI uses a compact editorial control-room style, documented in `DESIG
 - Public website is read-only by design.
 - Full native Agent execution requires local Codex/ChatGPT login.
 - Image generation may consume quota.
-- If image generation is unavailable, AutoDirector blocks final packaging instead of faking `final.mp4`.
+- If image generation is unavailable, AutoDirector blocks final packaging instead of publishing an incomplete `final.mp4`.
 - Public demo assets are hosted separately from the source ZIP to keep the ZIP small.
 - Local `.autodirector/state.json` is machine-bound; rerun setup instead of copying state between machines.
 

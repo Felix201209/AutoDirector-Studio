@@ -15,4 +15,4 @@ This sample asks for a 30-second product launch video. It is safer for judging t
 
 The public delivery video remains the hosted Musk/Altman v10 artifact because it has complete evidence and media packaging. The examples here are source-level review inputs.
 
-`evidence-plan.json` lists the exact artifacts, quality gates, and honest blocking conditions expected from the same Agent chain. It is included so reviewers can see the product is not topic-locked without pretending the neutral sample already has generated media.
+`evidence-plan.json` lists the exact artifacts, quality gates, and blocking conditions expected from the same Agent chain. It shows the product is not topic-locked while keeping the hosted delivery evidence honest and separate.
