@@ -67,6 +67,9 @@ type AppSettings = {
   agentHost?: AgentHost
   modelProvider?: ModelProvider
   visualProvider?: VisualProvider
+  enabledAgentHosts?: AgentHost[]
+  enabledModelProviders?: ModelProvider[]
+  enabledVisualProviders?: VisualProvider[]
   updatedAt: string
 }
 
@@ -216,6 +219,14 @@ type BootstrapState = {
       endpoint?: string
       note?: string
     }>
+    agentHosts?: Array<{ id: AgentHost; name: string; detail?: string; note?: string }>
+    visualProviders?: Array<{ id: VisualProvider; name: string; detail?: string; note?: string }>
+    connections?: {
+      agentHosts: Record<string, ConnectionStatus>
+      modelProviders: Record<string, ConnectionStatus>
+      visualProviders: Record<string, ConnectionStatus>
+    }
+    availableModels?: AvailableModel[]
     codexNative?: {
       available: boolean
       binary: string
@@ -234,6 +245,22 @@ type BootstrapState = {
     matrix: Record<string, string>
     policy: string
   }
+}
+
+type ConnectionStatus = {
+  connected: boolean
+  label: string
+  tone: "ok" | "warn" | "muted"
+  env?: string
+}
+
+type AvailableModel = {
+  id: string
+  label: string
+  provider: ModelProvider
+  providerLabel: string
+  bestFor: string
+  connected: boolean
 }
 
 type DraftMessage = {
@@ -289,18 +316,10 @@ const agentDisplayName = (agentId?: string | null) =>
 const artifactDisplayName = (artifactId?: string | null) =>
   seedArtifacts.find((artifact) => artifact.id === artifactId)?.title ?? (artifactId ? artifactId : "任务图与成功标准")
 
-const modelOptions = [
-  "codex-default",
-  "codex-coding",
-  "openai-default",
-  "claude-sonnet",
-  "claude-opus",
-  "deepseek-chat",
-  "deepseek-reasoner",
-  "qwen-coder",
-  "qwen-plus",
-  "custom-model-id",
-  "local-tool-runner",
+const fallbackModelOptions: AvailableModel[] = [
+  { id: "gpt-5.5", label: "GPT-5.5", provider: "codex_oauth", providerLabel: "Codex / ChatGPT OAuth", bestFor: "Producer / Quality / high-stakes reasoning", connected: false },
+  { id: "gpt-5.4", label: "GPT-5.4", provider: "codex_oauth", providerLabel: "Codex / ChatGPT OAuth", bestFor: "General Agent work", connected: false },
+  { id: "gpt-5.3-codex", label: "GPT-5.3 Codex", provider: "codex_oauth", providerLabel: "Codex / ChatGPT OAuth", bestFor: "Video Engineer / code implementation", connected: false },
 ]
 
 function modelDisplayName(model: string) {
@@ -309,8 +328,7 @@ function modelDisplayName(model: string) {
     "codex-coding": "代码模型（内部路由）",
     "local-tool-runner": "本地工具执行（内部路由）",
     "deterministic-recorder": "Recorder 规则引擎（内部路由）",
-    "openai-default": "OpenAI 默认模型",
-    "custom-model-id": "自定义模型",
+    "custom-model-id": "Custom concrete model id",
   }
   return labels[model] ?? model
 }
@@ -512,6 +530,9 @@ function createReadOnlyBootstrap(): BootstrapState {
       agentHost: "codex_native",
       modelProvider: "codex_oauth",
       visualProvider: "codex_imagegen",
+      enabledAgentHosts: ["codex_native"],
+      enabledModelProviders: ["codex_oauth"],
+      enabledVisualProviders: ["codex_imagegen", "user_upload", "public_source_only"],
       updatedAt: now,
     },
     openaiAccount: null,
@@ -550,6 +571,14 @@ function createReadOnlyBootstrap(): BootstrapState {
         executionMode: "codex_native",
       },
       modelProviders: modelProviderOptions,
+      agentHosts: agentHostOptions,
+      visualProviders: visualProviderOptions,
+      connections: {
+        agentHosts: Object.fromEntries(agentHostOptions.map((option) => [option.id, { connected: false, label: "只读", tone: "muted" }])),
+        modelProviders: Object.fromEntries(modelProviderOptions.map((option) => [option.id, { connected: false, label: "只读", tone: "muted", env: option.env }])),
+        visualProviders: Object.fromEntries(visualProviderOptions.map((option) => [option.id, { connected: option.id === "user_upload" || option.id === "public_source_only", label: option.id === "user_upload" || option.id === "public_source_only" ? "本地可用" : "只读", tone: option.id === "user_upload" || option.id === "public_source_only" ? "ok" : "muted" }])),
+      },
+      availableModels: fallbackModelOptions,
       codexNative: {
         available: false,
         binary: "review-mode",
@@ -1171,11 +1200,11 @@ function ProducerWorkbench({
           <Button
             size="sm"
             className={cn("rounded-lg", runBlocked && "blocked-action")}
-            disabled={readOnly || !isConnected || isGenerating || runBlocked || runFinal || (draftOpen && !hasDraftBrief)}
+            disabled={readOnly || isGenerating || runBlocked || runFinal || (draftOpen && !hasDraftBrief)}
             onClick={draftOpen ? onStartProduction : onAdvance}
           >
             <Play data-icon="inline-start" aria-hidden="true" />
-            {readOnly ? "只读" : isGenerating ? "生成中" : runBlocked ? "已阻塞" : runFinal ? "成片就绪" : draftOpen ? "开始制作" : "继续流水线"}
+            {readOnly ? "只读" : isGenerating ? "生成中" : runBlocked ? "已阻塞" : runFinal ? "成片就绪" : draftOpen ? "开始制作" : isConnected ? "继续流水线" : "离线继续"}
           </Button>
         </div>
       </div>
@@ -1222,10 +1251,10 @@ function ProducerWorkbench({
               <Button
                 className={cn("rounded-lg", runBlocked && "blocked-action")}
                 onClick={draftOpen ? onSendDraft : activeRun ? onAdvance : onCreateRun}
-                disabled={readOnly || (draftOpen ? !message.trim() || draftBusy : !isConnected || runFinal || runBlocked)}
+                disabled={readOnly || (draftOpen ? !message.trim() || draftBusy : runFinal || runBlocked)}
               >
                 <Send data-icon="inline-start" aria-hidden="true" />
-                {readOnly ? "只读" : draftOpen ? draftBusy ? "处理中" : "发送" : runFinal ? "已完成" : runBlocked ? "已阻塞" : activeRun ? "继续" : "新建"}
+                {readOnly ? "只读" : draftOpen ? draftBusy ? "处理中" : "发送" : runFinal ? "已完成" : runBlocked ? "已阻塞" : activeRun ? isConnected ? "继续" : "离线继续" : "新建"}
               </Button>
             </div>
           </div>
@@ -1624,9 +1653,10 @@ function InspectorPanel({
 
 function AgentDetailView({ agent, worker }: { agent: (typeof agentSkills)[number]; worker?: WorkerState }) {
   const status = worker?.status ?? "idle"
+  const capabilityCopy = worker?.capabilities?.length ? worker.capabilities.slice(0, 3).join(", ") : "standard"
 
   return (
-    <div className="space-y-4">
+    <div className="agent-detail-compact">
       <div className="agent-profile">
         <AgentGlyph agent={agent} status={status} size="large" />
         <div className="min-w-0">
@@ -1636,43 +1666,54 @@ function AgentDetailView({ agent, worker }: { agent: (typeof agentSkills)[number
         <Badge variant="outline" className={cn("ml-auto rounded-md", statusClass[status])}>{statusCopy[status]}</Badge>
       </div>
 
-      <InfoBlock title="当前任务">
-        <p>{agent.mission}</p>
-        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-high">
-          <div className="h-full w-2/3 bg-primary" />
-        </div>
-      </InfoBlock>
-
-      <InfoBlock title="模型策略">
-        <div className="metadata-grid">
+      <div className="agent-summary-grid">
+        <div>
           <span>模型</span>
           <strong>{modelDisplayName(worker?.model ?? "codex-default")}</strong>
+        </div>
+        <div>
           <span>推理</span>
           <strong>{worker?.thinkingLabel ?? worker?.thinkingLevel ?? "中"}</strong>
+        </div>
+        <div>
           <span>能力</span>
-          <strong>{worker?.capabilities?.length ? worker.capabilities.join(", ") : "standard"}</strong>
+          <strong>{capabilityCopy}</strong>
         </div>
-      </InfoBlock>
-
-      <InfoBlock title="记忆栈">
-        <BulletList items={[`输入: ${agent.inputs.join(", ")}`, `输出: ${agent.outputs.join(", ")}`, `Agent 收件箱: ${worker?.inbox.length ?? 0}`]} />
-      </InfoBlock>
-
-      <InfoBlock title="技能栈">
-        <div className="flex flex-wrap gap-1.5">
-          {agent.skillStack.map((skill) => (
-            <Badge key={skill} variant="outline" className="rounded-md">{skill}</Badge>
-          ))}
+        <div>
+          <span>收件箱</span>
+          <strong>{worker?.inbox.length ?? 0}</strong>
         </div>
+      </div>
+
+      <InfoBlock title="职责">
+        <p>{agent.mission}</p>
       </InfoBlock>
 
-      <InfoBlock title="交接规则">
+      <InfoBlock title="下一步交接">
         <p>{agent.handoff}</p>
       </InfoBlock>
 
-      <InfoBlock title="工作方式">
-        <BulletList items={agent.how} />
-      </InfoBlock>
+      <details className="agent-extra">
+        <summary>展开输入、输出和技能</summary>
+        <div className="agent-extra-body">
+          <div>
+            <h3>输入</h3>
+            <p>{agent.inputs.join(", ")}</p>
+          </div>
+          <div>
+            <h3>输出</h3>
+            <p>{agent.outputs.join(", ")}</p>
+          </div>
+          <div>
+            <h3>技能</h3>
+            <div className="flex flex-wrap gap-1.5">
+              {agent.skillStack.map((skill) => (
+                <Badge key={skill} variant="outline" className="rounded-md">{skill}</Badge>
+              ))}
+            </div>
+          </div>
+        </div>
+      </details>
     </div>
   )
 }
@@ -1921,7 +1962,7 @@ function AgentTeamView({ workers, onInspect }: { workers: WorkerState[]; onInspe
                     </div>
                   </td>
                   <td data-label="角色">{worker.role}</td>
-                  <td data-label="技能">{agent?.skillStack.slice(0, 3).join(", ") ?? "artifact"}</td>
+                  <td data-label="技能"><span className="agent-skill-text">{agent?.skillStack.slice(0, 2).join(" / ") ?? "artifact"}</span></td>
                   <td data-label="模型">{worker.model}</td>
                   <td data-label="推理">{worker.thinkingLabel ?? worker.thinkingLevel}</td>
                   <td data-label="状态" className={statusClass[worker.status]}>{statusCopy[worker.status]}</td>
@@ -2049,6 +2090,7 @@ function SettingsView({
 }) {
   const oauthConnected = settings.authStatus === "connected" || Boolean(openaiAccount)
   const [activeSettingsGroup, setActiveSettingsGroup] = useState<SettingsGroup>("connect")
+  const connections = capabilities?.connections
   const updateAgentPolicy = (agentId: string, patch: Partial<AgentModelPolicy>) => {
     const current = settings.modelPolicy?.[agentId] ?? { model: "codex-default", thinkingLevel: "medium", thinkingLabel: "中" }
     const nextPolicy = {
@@ -2063,31 +2105,31 @@ function SettingsView({
   }
   const selectedModelProvider = settings.modelProvider ?? "codex_oauth"
   const selectedVisualProvider = settings.visualProvider ?? "codex_imagegen"
-  const modelSourceStatus: SettingStatus = readOnly
-    ? { label: "只读", tone: "muted" }
-    : selectedModelProvider === "codex_oauth"
-      ? oauthConnected ? { label: "已配置", tone: "ok" } : { label: "未配置", tone: "warn" }
-      : selectedModelProvider === "custom_mcp"
-        ? { label: "需 MCP", tone: "warn" }
-        : { label: "需环境变量", tone: "warn" }
-  const visualSourceStatus: SettingStatus = readOnly
-    ? { label: "只读", tone: "muted" }
-    : selectedVisualProvider === "codex_imagegen"
-      ? capabilities?.codexNative?.imageGeneration ? { label: "已配置", tone: "ok" } : { label: "未启用", tone: "warn" }
-      : selectedVisualProvider === "openai_image_api"
-        ? { label: "需 Key", tone: "warn" }
-        : { label: "可用", tone: "ok" }
-  const agentHostStatus: SettingStatus = readOnly
-    ? { label: "只读", tone: "muted" }
-    : capabilities?.codexNative?.appServer
-      ? { label: "已配置", tone: "ok" }
-      : { label: "未配置", tone: "warn" }
+  const selectedAgentHost = settings.agentHost ?? "codex_native"
+  const enabledAgentHosts = settings.enabledAgentHosts?.length ? settings.enabledAgentHosts : [selectedAgentHost]
+  const enabledModelProviders = settings.enabledModelProviders?.length ? settings.enabledModelProviders : [selectedModelProvider]
+  const enabledVisualProviders = settings.enabledVisualProviders?.length ? settings.enabledVisualProviders : [selectedVisualProvider]
+  const activeModelProviders = enabledModelProviders.filter((provider) => connections?.modelProviders?.[provider]?.connected)
+  const visibleModelOptions = (capabilities?.availableModels?.length ? capabilities.availableModels : fallbackModelOptions)
+    .filter((model) => model.connected && activeModelProviders.includes(model.provider))
+  const providerCountStatus = (values: string[], statuses?: Record<string, ConnectionStatus>): SettingStatus => {
+    if (readOnly) return { label: "只读", tone: "muted" }
+    const connectedCount = values.filter((value) => statuses?.[value]?.connected).length
+    return connectedCount > 0 ? { label: `${connectedCount}/${values.length} 可用`, tone: "ok" } : { label: "未连接", tone: "warn" }
+  }
+  const agentHostStatus = providerCountStatus(enabledAgentHosts, connections?.agentHosts)
+  const modelSourceStatus = providerCountStatus(enabledModelProviders, connections?.modelProviders)
+  const visualSourceStatus = providerCountStatus(enabledVisualProviders, connections?.visualProviders)
   const nativeStatus = [
     { label: "服务", value: capabilities?.codexNative?.appServer ? "可用" : "缺失", tone: capabilities?.codexNative?.appServer ? "ok" : "warn" },
     { label: "登录", value: capabilities?.codexNative?.loggedInWithChatGPT ? "已连接" : "未登录", tone: capabilities?.codexNative?.loggedInWithChatGPT ? "ok" : "muted" },
     { label: "图片", value: capabilities?.codexNative?.imageGeneration ? "启用" : "未启用", tone: capabilities?.codexNative?.imageGeneration ? "ok" : "warn" },
     { label: "工具", value: capabilities?.codexNative?.toolSearch ? "启用" : "未启用", tone: capabilities?.codexNative?.toolSearch ? "ok" : "muted" },
   ]
+  const toggleSelection = <T extends string,>(values: T[], value: T) => {
+    const next = values.includes(value) ? values.filter((item) => item !== value) : [...values, value]
+    return next.length ? next : [value]
+  }
 
   return (
     <section className="page-panel settings-page">
@@ -2128,27 +2170,45 @@ function SettingsView({
             </div>
           </div>
           <SettingsField label="Agent 承载" status={agentHostStatus}>
-            <SegmentedOptions
+            <ConnectionOptionGrid
               disabled={readOnly}
               options={agentHostOptions.map((option) => ({ value: option.id, label: option.name, title: option.detail }))}
-              value={settings.agentHost ?? "codex_native"}
-              onChange={(value) => onSettings({ agentHost: value as AgentHost })}
+              selectedValues={enabledAgentHosts}
+              primaryValue={selectedAgentHost}
+              statuses={connections?.agentHosts}
+              onToggle={(value) => {
+                const next = toggleSelection(enabledAgentHosts, value as AgentHost)
+                onSettings({ enabledAgentHosts: next, agentHost: next.includes(selectedAgentHost) ? selectedAgentHost : next[0] })
+              }}
+              onPrimary={(value) => onSettings({ agentHost: value as AgentHost })}
             />
           </SettingsField>
           <SettingsField label="模型来源" status={modelSourceStatus}>
-            <SegmentedOptions
+            <ConnectionOptionGrid
               disabled={readOnly}
               options={modelProviderOptions.map((option) => ({ value: option.id, label: modelProviderDisplayLabels[option.id], title: option.detail }))}
-              value={selectedModelProvider}
-              onChange={(value) => onSettings({ modelProvider: value as ModelProvider })}
+              selectedValues={enabledModelProviders}
+              primaryValue={selectedModelProvider}
+              statuses={connections?.modelProviders}
+              onToggle={(value) => {
+                const next = toggleSelection(enabledModelProviders, value as ModelProvider)
+                onSettings({ enabledModelProviders: next, modelProvider: next.includes(selectedModelProvider) ? selectedModelProvider : next[0] })
+              }}
+              onPrimary={(value) => onSettings({ modelProvider: value as ModelProvider })}
             />
           </SettingsField>
           <SettingsField label="素材来源" status={visualSourceStatus}>
-            <SegmentedOptions
+            <ConnectionOptionGrid
               disabled={readOnly}
               options={visualProviderOptions.map((option) => ({ value: option.id, label: option.name, title: option.detail }))}
-              value={selectedVisualProvider}
-              onChange={(value) => onSettings({ visualProvider: value as VisualProvider })}
+              selectedValues={enabledVisualProviders}
+              primaryValue={selectedVisualProvider}
+              statuses={connections?.visualProviders}
+              onToggle={(value) => {
+                const next = toggleSelection(enabledVisualProviders, value as VisualProvider)
+                onSettings({ enabledVisualProviders: next, visualProvider: next.includes(selectedVisualProvider) ? selectedVisualProvider : next[0] })
+              }}
+              onPrimary={(value) => onSettings({ visualProvider: value as VisualProvider })}
             />
           </SettingsField>
         </section>
@@ -2168,22 +2228,28 @@ function SettingsView({
           <div className="settings-field settings-field--stack">
             <div className="settings-field-label">
               <span>Agent 模型</span>
-              <SettingsStatus label={readOnly ? "只读" : "已配置"} tone={readOnly ? "muted" : "ok"} />
+              <SettingsStatus label={readOnly ? "只读" : visibleModelOptions.length ? `${visibleModelOptions.length} 个可选` : "先连接模型"} tone={readOnly ? "muted" : visibleModelOptions.length ? "ok" : "warn"} />
             </div>
+            {!visibleModelOptions.length ? (
+              <div className="settings-empty-note">没有真实可用的模型连接。去“连接”里登录 Codex/OAuth 或配置 API Key 后，这里只会出现对应供应商的具体模型。</div>
+            ) : null}
             <div className="model-policy-list model-policy-list--simple" aria-label="Agent 模型策略">
               {agentSkills.map((agent) => {
                 const policy = settings.modelPolicy?.[agent.id] ?? { model: "codex-default", thinkingLevel: "medium", thinkingLabel: "中", capabilities: [] }
+                const modelChoices = visibleModelOptions.some((model) => model.id === policy.model)
+                  ? visibleModelOptions
+                  : [{ id: policy.model, label: `${modelDisplayName(policy.model)}（当前，未连接）`, provider: selectedModelProvider, providerLabel: "Current", bestFor: "Current saved setting", connected: false }, ...visibleModelOptions]
                 return (
                   <article key={agent.id} className="model-policy-card model-policy-card--simple">
                     <strong>{agent.shortName}</strong>
                     <select
                       className="inspector-select model-policy-select"
                       value={policy.model}
-                      disabled={readOnly}
+                      disabled={readOnly || !visibleModelOptions.length}
                       onChange={(event) => updateAgentPolicy(agent.id, { model: event.target.value })}
                       aria-label={`${agent.shortName} 模型`}
                     >
-                      {modelOptions.map((model) => <option key={model} value={model}>{modelDisplayName(model)}</option>)}
+                      {modelChoices.map((model) => <option key={`${model.provider}:${model.id}`} value={model.id}>{model.label} · {model.providerLabel}</option>)}
                     </select>
                     <select
                       className="inspector-select model-policy-select"
@@ -2288,6 +2354,63 @@ function SegmentedOptions({
           {option.label}
         </button>
       ))}
+    </div>
+  )
+}
+
+function ConnectionOptionGrid({
+  disabled,
+  options,
+  selectedValues,
+  primaryValue,
+  statuses,
+  onToggle,
+  onPrimary,
+}: {
+  disabled?: boolean
+  options: Array<{ value: string; label: string; title?: string }>
+  selectedValues: string[]
+  primaryValue: string
+  statuses?: Record<string, ConnectionStatus>
+  onToggle: (value: string) => void
+  onPrimary: (value: string) => void
+}) {
+  return (
+    <div className="connection-grid">
+      {options.map((option) => {
+        const selected = selectedValues.includes(option.value)
+        const primary = primaryValue === option.value
+        const status = statuses?.[option.value] ?? { connected: false, label: "未知", tone: "muted" as const }
+        return (
+          <article key={option.value} className={cn("connection-card", selected && "connection-card--selected", primary && "connection-card--primary")}>
+            <button
+              type="button"
+              className="connection-card-main"
+              disabled={disabled}
+              onClick={() => onToggle(option.value)}
+              title={option.title}
+              aria-pressed={selected}
+            >
+              <span className="connection-check" aria-hidden="true">{selected ? "✓" : ""}</span>
+              <span className="connection-copy">
+                <strong>{option.label}</strong>
+                <small>{option.title}</small>
+              </span>
+              <SettingsStatus label={status.label} tone={status.tone} />
+            </button>
+            {selected ? (
+              <button
+                type="button"
+                className="connection-primary-button"
+                disabled={disabled || primary}
+                onClick={() => onPrimary(option.value)}
+              >
+                {primary ? "当前主路由" : "设为主路由"}
+              </button>
+            ) : null}
+          </article>
+        )
+      })}
     </div>
   )
 }

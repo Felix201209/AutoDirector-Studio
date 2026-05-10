@@ -1645,6 +1645,15 @@ button.project-row:hover {
   background: rgba(255, 255, 255, 0.07);
 }
 
+.agent-skill-text {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+}
+
 .delivery-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.6fr);
@@ -3594,6 +3603,56 @@ button[class*="bg-primary"],
   }
 }
 
+/* Final interaction guardrails: collapsed overlays must never eat page clicks. */
+.bottom-console--closed {
+  left: auto !important;
+  right: 18px !important;
+  bottom: 16px !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: calc(100vw - 36px) !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  pointer-events: none;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.bottom-console--closed .bottom-console-head {
+  min-height: 0 !important;
+  border: 0 !important;
+  padding: 0 !important;
+  pointer-events: none;
+}
+
+.bottom-console--closed .pipeline-headline {
+  display: none !important;
+}
+
+.bottom-console--closed .console-toggle {
+  min-height: 42px;
+  padding: 0 16px;
+  color: #fff;
+  background: linear-gradient(135deg, rgba(32, 122, 117, 0.96), rgba(47, 86, 142, 0.92));
+  box-shadow: 0 14px 34px rgba(28, 52, 68, 0.18);
+  pointer-events: auto;
+}
+
+.settings-sections--simple .settings-panel:not([style]) {
+  pointer-events: auto;
+}
+
+.settings-sections--simple .settings-panel {
+  min-width: 0;
+}
+
+button:disabled,
+select:disabled,
+textarea:disabled {
+  cursor: not-allowed;
+}
+
 /* Settings reset: make it a settings form, not a product proof wall. */
 .settings-sections--simple {
   display: block;
@@ -3787,6 +3846,171 @@ button[class*="bg-primary"],
   white-space: nowrap;
 }
 
+.connection-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
+}
+
+.connection-card {
+  min-width: 0;
+  border: 1px solid rgba(39, 37, 30, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.36);
+}
+
+.connection-card--selected {
+  border-color: rgba(32, 122, 117, 0.24);
+  background: rgba(244, 255, 252, 0.72);
+}
+
+.connection-card--primary {
+  box-shadow: inset 0 0 0 1px rgba(32, 122, 117, 0.2);
+}
+
+.connection-card-main {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 9px;
+  text-align: left;
+}
+
+.connection-check {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border: 1px solid rgba(32, 122, 117, 0.22);
+  border-radius: 7px;
+  color: #16745c;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.connection-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.connection-copy strong,
+.connection-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.connection-copy strong {
+  color: var(--foreground);
+  font-size: 0.84rem;
+}
+
+.connection-copy small {
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+}
+
+.connection-primary-button {
+  margin: 0 9px 9px 39px;
+  border: 1px solid rgba(32, 122, 117, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.56);
+  color: var(--foreground);
+  padding: 5px 9px;
+  font-size: 0.72rem;
+  font-weight: 760;
+}
+
+.connection-primary-button:disabled {
+  color: #16745c;
+}
+
+.settings-empty-note {
+  border: 1px dashed rgba(190, 75, 65, 0.22);
+  border-radius: 12px;
+  background: rgba(255, 246, 244, 0.74);
+  color: #8d3b35;
+  padding: 10px 12px;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.agent-detail-compact {
+  display: grid;
+  gap: 12px;
+}
+
+.agent-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.agent-summary-grid div {
+  min-width: 0;
+  border: 1px solid rgba(39, 37, 30, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.5);
+  padding: 10px;
+}
+
+.agent-summary-grid span {
+  display: block;
+  color: var(--muted-foreground);
+  font-size: 0.68rem;
+  font-weight: 780;
+}
+
+.agent-summary-grid strong {
+  display: block;
+  overflow: hidden;
+  margin-top: 4px;
+  color: var(--foreground);
+  font-size: 0.88rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-extra {
+  border: 1px solid rgba(39, 37, 30, 0.08);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.44);
+  padding: 10px 12px;
+}
+
+.agent-extra summary {
+  cursor: pointer;
+  color: var(--foreground);
+  font-size: 0.82rem;
+  font-weight: 780;
+}
+
+.agent-extra-body {
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+}
+
+.agent-extra-body h3 {
+  margin: 0 0 4px;
+  color: var(--muted-foreground);
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.agent-extra-body p {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
 @media (max-width: 780px) {
   .settings-panel-head,
   .settings-field {
@@ -3803,6 +4027,19 @@ button[class*="bg-primary"],
   }
 
   .model-policy-card--simple {
+    grid-template-columns: 1fr;
+  }
+
+  .connection-card-main {
+    grid-template-columns: 22px minmax(0, 1fr);
+  }
+
+  .connection-card-main .settings-status {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .agent-summary-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -6001,7 +6238,11 @@ button[class*="bg-primary"],
 
   .agent-table td,
   .agent-table td span {
+    min-width: 0;
+    max-width: 100%;
     overflow-wrap: anywhere;
+    word-break: break-word;
+    white-space: normal;
   }
 
   .workspace-timeline {
@@ -6306,16 +6547,30 @@ button[class*="bg-primary"],
 @media (max-width: 700px) {
   .control-shell {
     --fluid-sidebar: 74px;
+    display: grid !important;
+    height: 100dvh;
     grid-template-columns: var(--fluid-sidebar) minmax(0, 1fr) !important;
+    grid-template-areas: "sidebar main";
+    overflow: hidden;
   }
 
   .project-sidebar {
+    position: relative;
+    inset: auto;
     width: var(--fluid-sidebar);
+    height: 100dvh;
+    max-height: none;
+    border-radius: 0 22px 22px 0;
     padding: 10px 7px;
   }
 
   .nav-section {
     width: 100%;
+  }
+
+  .project-sidebar .nav-section .mt-2 {
+    grid-template-columns: 1fr;
+    gap: 7px;
   }
 
   .side-nav-row {
@@ -6342,6 +6597,32 @@ button[class*="bg-primary"],
 
   .chat-input {
     left: calc(var(--fluid-sidebar) + 8px) !important;
+  }
+
+  .app-main {
+    grid-area: main;
+    width: auto;
+    max-width: none;
+    height: 100dvh;
+    padding-bottom: 0;
+    overflow-x: hidden;
+  }
+
+  .page-panel {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .agent-table td {
+    grid-template-columns: minmax(64px, 0.34fr) minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .agent-table td:nth-child(3) {
+    font-size: 0.78rem;
+    line-height: 1.3;
   }
 
   .header-project-block strong,

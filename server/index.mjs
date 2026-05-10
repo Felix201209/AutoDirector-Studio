@@ -207,6 +207,21 @@ const visualProviderOptions = [
     note: "Works for real editorial/source footage; any generated visual request is blocked instead of faked.",
   },
 ]
+
+const concreteModelCatalog = [
+  { id: "gpt-5.5", label: "GPT-5.5", provider: "codex_oauth", bestFor: "Producer / Quality / high-stakes reasoning" },
+  { id: "gpt-5.4", label: "GPT-5.4", provider: "codex_oauth", bestFor: "General Agent work" },
+  { id: "gpt-5.3-codex", label: "GPT-5.3 Codex", provider: "codex_oauth", bestFor: "Video Engineer / code implementation" },
+  { id: "gpt-5.5", label: "GPT-5.5", provider: "openai_api", bestFor: "OpenAI API text Agent work" },
+  { id: "gpt-5.4-mini", label: "GPT-5.4 Mini", provider: "openai_api", bestFor: "Fast review and lightweight artifacts" },
+  { id: "claude-sonnet-4.5", label: "Claude Sonnet 4.5", provider: "anthropic_api", bestFor: "Script and implementation review" },
+  { id: "claude-opus-4.1", label: "Claude Opus 4.1", provider: "anthropic_api", bestFor: "Deep creative direction" },
+  { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro", provider: "deepseek_api", bestFor: "Reasoning and Chinese research" },
+  { id: "deepseek-reasoner", label: "DeepSeek Reasoner", provider: "deepseek_api", bestFor: "Structured critique and repair plans" },
+  { id: "qwen3-coder-plus", label: "Qwen3 Coder Plus", provider: "qwen_api", bestFor: "Code-heavy Agent turns" },
+  { id: "qwen-max-latest", label: "Qwen Max Latest", provider: "qwen_api", bestFor: "Chinese writing and broad reasoning" },
+  { id: "custom-model-id", label: "Custom concrete model id", provider: "openai_compatible", bestFor: "Configured compatible endpoint" },
+]
 const openAiOauth = {
   clientId: "app_EMoamEEZ73f0CkXaXp7hrann",
   authorizeUrl: "https://auth.openai.com/oauth/authorize",
@@ -1969,6 +1984,9 @@ function defaultState() {
       agentHost: "codex_native",
       modelProvider: "codex_oauth",
       visualProvider: "codex_imagegen",
+      enabledAgentHosts: ["codex_native"],
+      enabledModelProviders: ["codex_oauth"],
+      enabledVisualProviders: ["codex_imagegen", "user_upload", "public_source_only"],
       updatedAt: new Date().toISOString(),
     },
     activeRunId: null,
@@ -2459,6 +2477,89 @@ function codexNativeRuntimeStatus() {
   }
 }
 
+function envConfigured(names = []) {
+  return names.some((name) => Boolean(String(process.env[name] ?? "").trim()))
+}
+
+function modelProviderConnectionStatus(providerId, codexNative) {
+  const oauthReady = Boolean(state.openaiAccount?.accessToken) || Boolean(codexNative.loggedInWithChatGPT)
+  const apiStatus = (connected, env, label = connected ? "已连接" : `缺 ${env}`) => ({
+    connected,
+    label,
+    tone: connected ? "ok" : "warn",
+    env,
+  })
+  if (providerId === "codex_oauth") {
+    return {
+      connected: oauthReady,
+      label: oauthReady ? "已连接" : "未登录",
+      tone: oauthReady ? "ok" : "warn",
+      env: "codex auth login / OpenAI OAuth",
+    }
+  }
+  if (providerId === "openai_api") return apiStatus(envConfigured(["OPENAI_API_KEY"]), "OPENAI_API_KEY")
+  if (providerId === "anthropic_api") return apiStatus(envConfigured(["ANTHROPIC_API_KEY"]), "ANTHROPIC_API_KEY")
+  if (providerId === "deepseek_api") return apiStatus(envConfigured(["DEEPSEEK_API_KEY"]), "DEEPSEEK_API_KEY")
+  if (providerId === "qwen_api") return apiStatus(envConfigured(["DASHSCOPE_API_KEY", "QWEN_API_KEY"]), "DASHSCOPE_API_KEY / QWEN_API_KEY")
+  if (providerId === "openai_compatible") {
+    const connected = envConfigured(["CUSTOM_MODEL_BASE_URL"]) && envConfigured(["CUSTOM_MODEL_API_KEY"])
+    return apiStatus(connected, "CUSTOM_MODEL_BASE_URL + CUSTOM_MODEL_API_KEY")
+  }
+  return { connected: false, label: "待接入", tone: "muted", env: "external MCP" }
+}
+
+function agentHostConnectionStatus(hostId, codexNative, modelConnections) {
+  if (hostId === "codex_native") {
+    const connected = Boolean(codexNative.available && codexNative.appServer)
+    return { connected, label: connected ? "本机可用" : "不可用", tone: connected ? "ok" : "warn" }
+  }
+  if (hostId === "codex_plugin") return { connected: true, label: "MCP 可用", tone: "ok" }
+  if (hostId === "openai_api") {
+    const connected = Boolean(modelConnections.openai_api?.connected || modelConnections.openai_compatible?.connected)
+    return { connected, label: connected ? "API 可用" : "缺 API Key", tone: connected ? "ok" : "warn" }
+  }
+  if (hostId === "claude_code") {
+    const connected = commandAvailable("claude")
+    return { connected, label: connected ? "命令可用" : "未安装", tone: connected ? "ok" : "muted" }
+  }
+  return { connected: false, label: "待接入", tone: "muted" }
+}
+
+function visualProviderConnectionStatus(providerId, codexNative, modelConnections) {
+  if (providerId === "codex_imagegen") {
+    const connected = Boolean(codexNative.loggedInWithChatGPT && codexNative.imageGeneration)
+    return { connected, label: connected ? "imagegen 可用" : "未启用", tone: connected ? "ok" : "warn" }
+  }
+  if (providerId === "openai_image_api") {
+    const connected = Boolean(modelConnections.openai_api?.connected)
+    return { connected, label: connected ? "Image API 可用" : "缺 OPENAI_API_KEY", tone: connected ? "ok" : "warn" }
+  }
+  if (providerId === "user_upload") return { connected: true, label: "本地可用", tone: "ok" }
+  if (providerId === "public_source_only") return { connected: true, label: "本地可用", tone: "ok" }
+  return { connected: false, label: "待接入", tone: "muted" }
+}
+
+function connectionStatus(codexNative) {
+  const modelProviders = Object.fromEntries(
+    modelProviderOptions.map((option) => [option.id, modelProviderConnectionStatus(option.id, codexNative)])
+  )
+  const agentHosts = Object.fromEntries(
+    agentHostOptions.map((option) => [option.id, agentHostConnectionStatus(option.id, codexNative, modelProviders)])
+  )
+  const visualProviders = Object.fromEntries(
+    visualProviderOptions.map((option) => [option.id, visualProviderConnectionStatus(option.id, codexNative, modelProviders)])
+  )
+  return { agentHosts, modelProviders, visualProviders }
+}
+
+function availableConcreteModels(modelConnections) {
+  return concreteModelCatalog.map((model) => ({
+    ...model,
+    connected: Boolean(modelConnections[model.provider]?.connected),
+    providerLabel: modelProviderOptions.find((provider) => provider.id === model.provider)?.name ?? model.provider,
+  }))
+}
+
 function listFilesRecursive(dir, base = dir) {
   return readdirSync(dir).flatMap((entry) => {
     const full = join(dir, entry)
@@ -2479,6 +2580,15 @@ state.settings.imageModel = state.settings.imageModel ?? defaultImageModel
 state.settings.executionMode = normalizeExecutionMode(state.settings.executionMode ?? "codex_native")
 state.settings.agentHost = state.settings.agentHost === "codex_cli" ? "codex_native" : state.settings.agentHost ?? (state.settings.executionMode === "codex_native" ? "codex_native" : "codex_plugin")
 state.settings.modelProvider = modelProviderOptions.some((option) => option.id === state.settings.modelProvider) ? state.settings.modelProvider : (state.settings.agentHost === "codex_native" ? "codex_oauth" : "openai_compatible")
+state.settings.enabledAgentHosts = Array.isArray(state.settings.enabledAgentHosts)
+  ? state.settings.enabledAgentHosts.filter((id) => agentHostOptions.some((option) => option.id === (id === "codex_cli" ? "codex_native" : id))).map((id) => id === "codex_cli" ? "codex_native" : id)
+  : [state.settings.agentHost]
+state.settings.enabledModelProviders = Array.isArray(state.settings.enabledModelProviders)
+  ? state.settings.enabledModelProviders.filter((id) => modelProviderOptions.some((option) => option.id === id))
+  : [state.settings.modelProvider]
+state.settings.enabledVisualProviders = Array.isArray(state.settings.enabledVisualProviders)
+  ? state.settings.enabledVisualProviders.filter((id) => visualProviderOptions.some((option) => option.id === id))
+  : [state.settings.visualProvider]
 if (state.settings.executionMode === "oauth_agents" && state.settings.agentHost === "codex_plugin") {
   state.settings.executionMode = "codex_native"
   state.settings.agentHost = "codex_native"
@@ -2568,6 +2678,7 @@ function runtimeCapabilities() {
   const visual = visualProviderOptions.find((item) => item.id === visualProvider) ?? visualProviderOptions[0]
   const provider = modelProviderOptions.find((item) => item.id === modelProvider) ?? modelProviderOptions[0]
   const codexNative = codexNativeRuntimeStatus()
+  const connections = connectionStatus(codexNative)
   const canGenerateImages = Boolean(host.imagegen || visual.canGenerate || visualProvider === "user_upload")
   return {
     selected: {
@@ -2582,8 +2693,10 @@ function runtimeCapabilities() {
     modelProviders: modelProviderOptions,
     visualProviders: visualProviderOptions,
     codexNative,
+    connections,
+    availableModels: availableConcreteModels(connections.modelProviders),
     matrix: {
-      textModel: provider.keyless === true || modelProvider === "custom_mcp" ? "available_or_external" : "requires_local_env",
+      textModel: connections.modelProviders[provider.id]?.connected ? "available" : "not_connected",
       endpoint: provider.endpoint,
       imagegen: canGenerateImages && (agentHost !== "codex_native" || codexNative.imageGeneration) ? "available" : "blocked_until_provider_registered",
       research: host.webSearch === false ? "manual_or_external" : "available",
@@ -3431,14 +3544,17 @@ function safeExtFromUrl(url) {
 
 function downloadPublicImage(url, outputPath) {
   if (!url || !commandAvailable("curl")) return { status: "skipped", reason: url ? "curl_not_found" : "missing_url" }
-  const result = spawnSync("curl", ["-L", "--fail", "--silent", "--show-error", "--retry", "3", "--retry-delay", "1", "--connect-timeout", "20", url, "-o", outputPath], {
+  if (process.env.AUTODIRECTOR_OFFLINE_SMOKE === "1") return { status: "skipped", reason: "offline_smoke", sourceUrl: url }
+  const result = spawnSync("curl", ["-L", "--fail", "--silent", "--show-error", "--retry", "2", "--retry-delay", "1", "--connect-timeout", "8", "--max-time", "18", url, "-o", outputPath], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
+    timeout: 22_000,
+    killSignal: "SIGKILL",
   })
   if (result.status === 0 && existsSync(outputPath) && statSync(outputPath).size > 0) {
     return { status: "generated", file: outputPath, provider: "public_source_download", sourceUrl: url }
   }
-  return { status: "failed", reason: result.stderr || "download_failed", sourceUrl: url }
+  return { status: "failed", reason: result.stderr || result.signal || "download_failed", sourceUrl: url }
 }
 
 function imagegenPromptFor(scene) {
@@ -4379,7 +4495,7 @@ function stripHtml(value) {
 function commonsFileMetadata(title) {
   if (!commandAvailable("curl")) return { ok: false, reason: "curl_not_found" }
   const url = `https://commons.wikimedia.org/w/api.php?action=query&format=json&prop=imageinfo&titles=${encodeURIComponent(title)}&iiprop=url%7Cmime%7Csize%7Cextmetadata`
-  const result = runCommandMaybe("curl", ["-L", "-sS", url])
+  const result = runCommandMaybe("curl", ["-L", "-sS", "--connect-timeout", "8", "--max-time", "18", url], { timeout: 22_000, killSignal: "SIGKILL" })
   if (result.status !== 0) return { ok: false, reason: result.stderr || "commons_api_failed", url }
 
   let parsed
@@ -4412,6 +4528,12 @@ function discoverOnlineMusic(run, packageDir) {
   const attempts = []
   pushEvent("music.search.started", { runId: run.id, agentId: "sound", provider: "Wikimedia Commons" })
 
+  if (process.env.AUTODIRECTOR_OFFLINE_SMOKE === "1") {
+    const fallback = { status: "silent_fallback", reason: "offline_smoke", attempts }
+    pushEvent("music.fallback", { runId: run.id, agentId: "sound", reason: fallback.reason })
+    return fallback
+  }
+
   if (!commandAvailable("curl")) {
     const fallback = { status: "silent_fallback", reason: "curl_not_found", attempts }
     pushEvent("music.fallback", { runId: run.id, agentId: "sound", reason: fallback.reason })
@@ -4425,7 +4547,7 @@ function discoverOnlineMusic(run, packageDir) {
 
     const extension = metadata.sourceUrl.split("?")[0].split(".").at(-1)?.toLowerCase() || "ogg"
     const localFile = join(musicDir, `soundtrack.${extension}`)
-    const download = runCommandMaybe("curl", ["-L", "-sS", metadata.sourceUrl, "-o", localFile])
+    const download = runCommandMaybe("curl", ["-L", "-sS", "--connect-timeout", "8", "--max-time", "24", metadata.sourceUrl, "-o", localFile], { timeout: 28_000, killSignal: "SIGKILL" })
     if (download.status !== 0 || !existsSync(localFile)) {
       attempts.at(-1).download = { ok: false, reason: download.stderr || "download_failed" }
       continue
@@ -4990,26 +5112,38 @@ function generateFinalPackage(run) {
     "generated_skills",
     "assets",
   ]
+  const packageZipName = `${run.id}-final-package.zip`
   runCommand(
     "zip",
-    ["-qr", `${run.id}-final-package.zip`, ...packageFiles],
+    ["-qr", packageZipName, ...packageFiles],
     { cwd: packageDir }
   )
 
+  const finalVideoPath = join(packageDir, "final.mp4")
+  const packageZipPath = join(packageDir, packageZipName)
+  const readinessFailures = []
+  if (gate.ok && (!existsSync(finalVideoPath) || statSync(finalVideoPath).size < 1024)) {
+    readinessFailures.push("final.mp4 missing or too small after render")
+  }
+  if (!existsSync(packageZipPath) || statSync(packageZipPath).size < 1024) {
+    readinessFailures.push(`${packageZipName} missing or too small after packaging`)
+  }
+  const packageReady = gate.ok && readinessFailures.length === 0
+
   const files = listFilesRecursive(packageDir)
   run.package = {
-    status: gate.ok ? "ready" : "blocked",
+    status: packageReady ? "ready" : "blocked",
     outputDir: packageDir,
-    finalVideoUrl: gate.ok ? `/api/runs/${run.id}/files/final.mp4` : null,
-    packageZipUrl: `/api/runs/${run.id}/files/${run.id}-final-package.zip`,
+    finalVideoUrl: packageReady ? `/api/runs/${run.id}/files/final.mp4` : null,
+    packageZipUrl: `/api/runs/${run.id}/files/${packageZipName}`,
     sourceZipUrl: `/api/runs/${run.id}/files/source_project.zip`,
     files,
-    videoAssets: gate.ok ? videoAssets : [],
-    blockedReason: gate.ok ? null : gate.failures,
+    videoAssets: packageReady ? videoAssets : [],
+    blockedReason: packageReady ? null : [...gate.failures, ...readinessFailures],
     generatedAt: new Date().toISOString(),
   }
-  recordRunWork(run, gate.ok ? "package_ready" : "package_blocked", {
-    summary: gate.ok ? "Final package is ready and Recorder memory is available." : "Package is blocked and Recorder kept repair context.",
+  recordRunWork(run, packageReady ? "package_ready" : "package_blocked", {
+    summary: packageReady ? "Final package is ready and Recorder memory is available." : "Package is blocked and Recorder kept repair context.",
     agentId: "recorder",
     outputId: "skill_suggestions",
     packageStatus: run.package.status,
@@ -5019,7 +5153,7 @@ function generateFinalPackage(run) {
   run.artifacts = run.artifacts
     .filter((artifact) => !["final_video", "final_package", "imagegen_prompt_pack", "blocked_imagegen_request"].includes(artifact.id))
     .concat([
-      ...(gate.ok
+      ...(packageReady
         ? [
             {
               id: "final_video",
@@ -5060,10 +5194,10 @@ function generateFinalPackage(run) {
         type: "zip",
         ownerAgentId: "quality",
         path: run.package.packageZipUrl,
-        summary: gate.ok
+        summary: packageReady
           ? "包含 final.mp4、judging_readme、source_project、素材说明、引用来源、质量报告、运行日志。"
           : "阻塞包：包含 judging_readme、source_project、素材说明、prompt pack、质检失败报告和运行日志，但不包含假 final.mp4。",
-        checks: gate.ok ? ["zip complete", "submission ready", "judging guide included", "reviewable source included"] : ["zip complete", "blocked honestly", "judging guide included", "no fake final video"],
+        checks: packageReady ? ["zip complete", "submission ready", "judging guide included", "reviewable source included"] : ["zip complete", "blocked honestly", "judging guide included", "no fake final video"],
         createdAt: run.package.generatedAt,
       },
       {
@@ -5797,6 +5931,9 @@ async function routeApi(req, res, url) {
       agentHost: body.agentHost === "codex_cli" ? "codex_native" : agentHostOptions.some((option) => option.id === body.agentHost) ? body.agentHost : "codex_native",
       modelProvider: modelProviderOptions.some((option) => option.id === body.modelProvider) ? body.modelProvider : "codex_oauth",
       visualProvider: visualProviderOptions.some((option) => option.id === body.visualProvider) ? body.visualProvider : "codex_imagegen",
+      enabledAgentHosts: [body.agentHost === "codex_cli" ? "codex_native" : agentHostOptions.some((option) => option.id === body.agentHost) ? body.agentHost : "codex_native"],
+      enabledModelProviders: [modelProviderOptions.some((option) => option.id === body.modelProvider) ? body.modelProvider : "codex_oauth"],
+      enabledVisualProviders: [visualProviderOptions.some((option) => option.id === body.visualProvider) ? body.visualProvider : "codex_imagegen"],
       completed: true,
       updatedAt: new Date().toISOString(),
     }
@@ -5824,6 +5961,9 @@ async function routeApi(req, res, url) {
       agentHost: body.agentHost === "codex_cli" ? "codex_native" : agentHostOptions.some((option) => option.id === body.agentHost) ? body.agentHost : state.settings.agentHost,
       modelProvider: modelProviderOptions.some((option) => option.id === body.modelProvider) ? body.modelProvider : state.settings.modelProvider,
       visualProvider: visualProviderOptions.some((option) => option.id === body.visualProvider) ? body.visualProvider : state.settings.visualProvider,
+      enabledAgentHosts: Array.isArray(body.enabledAgentHosts) ? body.enabledAgentHosts.filter((id) => agentHostOptions.some((option) => option.id === (id === "codex_cli" ? "codex_native" : id))).map((id) => id === "codex_cli" ? "codex_native" : id) : state.settings.enabledAgentHosts,
+      enabledModelProviders: Array.isArray(body.enabledModelProviders) ? body.enabledModelProviders.filter((id) => modelProviderOptions.some((option) => option.id === id)) : state.settings.enabledModelProviders,
+      enabledVisualProviders: Array.isArray(body.enabledVisualProviders) ? body.enabledVisualProviders.filter((id) => visualProviderOptions.some((option) => option.id === id)) : state.settings.enabledVisualProviders,
       imageModel: body.imageModel ?? state.settings.imageModel ?? defaultImageModel,
       modelPolicy: nextModelPolicy,
       updatedAt: new Date().toISOString(),

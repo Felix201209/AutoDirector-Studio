@@ -25,6 +25,7 @@
     "test:unit": "node scripts/unit-tests.mjs",
     "smoke": "npm run smoke:offline",
     "smoke:offline": "node scripts/smoke-offline.mjs",
+    "smoke:agent-team": "node scripts/smoke-agent-team.mjs",
     "smoke:codex": "node scripts/smoke.mjs",
     "healthcheck": "npm run healthcheck:local",
     "healthcheck:local": "node scripts/healthcheck-local.mjs",
