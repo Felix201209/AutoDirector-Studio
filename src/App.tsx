@@ -331,15 +331,6 @@ const modelProviderOptions: Array<{ id: ModelProvider; name: string; detail: str
   { id: "openai_compatible", name: "Custom Endpoint", detail: "OpenAI-compatible model server。", env: "CUSTOM_MODEL_BASE_URL + CUSTOM_MODEL_API_KEY" },
   { id: "custom_mcp", name: "Custom MCP", detail: "外部工具自带模型路由。", env: "MCP server URL" },
 ]
-const modelProviderEnvLabels: Record<ModelProvider, string> = {
-  codex_oauth: "OAuth",
-  openai_api: "OPENAI_API_KEY",
-  anthropic_api: "ANTHROPIC_API_KEY",
-  deepseek_api: "DEEPSEEK_API_KEY",
-  qwen_api: "DASHSCOPE_API_KEY",
-  openai_compatible: "CUSTOM_MODEL_BASE_URL",
-  custom_mcp: "MCP",
-}
 const modelProviderDisplayLabels: Record<ModelProvider, string> = {
   codex_oauth: "Codex OAuth",
   openai_api: "OpenAI API",
@@ -2054,14 +2045,20 @@ function SettingsView({
     }
     void onSettings({ modelPolicy: nextPolicy })
   }
+  const nativeStatus = [
+    { label: "服务", value: capabilities?.codexNative?.appServer ? "可用" : "缺失" },
+    { label: "登录", value: capabilities?.codexNative?.loggedInWithChatGPT ? "已连接" : "未登录" },
+    { label: "图片", value: capabilities?.codexNative?.imageGeneration ? "启用" : "未启用" },
+    { label: "工具", value: capabilities?.codexNative?.toolSearch ? "启用" : "未启用" },
+  ]
 
   return (
     <section className="page-panel settings-page">
       <div className="settings-hero">
         <div>
           <SectionLabel>设置</SectionLabel>
-          <h1>控制台设置</h1>
-          <p>配置 Agent 接入、模型来源与运行时环境。</p>
+          <h1>设置</h1>
+          <p>只保留会影响运行的选项。</p>
         </div>
         <Button className="settings-primary-action" onClick={onConnect} disabled={readOnly}>
           <KeyRound data-icon="inline-start" aria-hidden="true" />
@@ -2083,257 +2080,166 @@ function SettingsView({
         ))}
       </nav>
 
-      <div className="settings-command-strip" aria-label="当前设置概览">
-        <div>
-          <span>Agent</span>
-          <strong>{agentHostOptions.find((option) => option.id === (settings.agentHost ?? "codex_native"))?.name ?? "Codex Native"}</strong>
-        </div>
-        <div>
-          <span>模型</span>
-          <strong>{modelProviderDisplayLabels[settings.modelProvider ?? "codex_oauth"]}</strong>
-        </div>
-        <div>
-          <span>素材</span>
-          <strong>{visualProviderOptions.find((option) => option.id === (settings.visualProvider ?? "codex_imagegen"))?.name ?? "Codex imagegen"}</strong>
-        </div>
-        <div>
-          <span>运行时</span>
-          <strong>{settings.defaultRuntime === "hyperframes" ? "HyperFrames" : "Remotion"}</strong>
-        </div>
-        <div>
-          <span>状态</span>
-          <strong>{capabilities?.codexNative?.appServer ? "服务可用" : "只读/未连接"}</strong>
-        </div>
-      </div>
-
-      <div className="settings-sections" data-active-group={activeSettingsGroup}>
-        <section className="setting-card setting-card--wide setting-card--compact setting-card--connect">
-          <div>
-            <SectionLabel>连接</SectionLabel>
-            <h2>连接状态</h2>
-          </div>
-          <div className="setting-status-stack">
-            <div className="setting-status-row">
-              <span>服务</span>
-              <Badge variant="outline" className={cn("rounded-md", capabilities?.codexNative?.appServer ? "text-secondary" : "text-destructive")}>
-                {capabilities?.codexNative?.appServer ? "可用" : "缺失"}
-              </Badge>
-            </div>
-            <div className="setting-status-row">
-              <span>登录</span>
-              <Badge variant="outline" className={cn("rounded-md", capabilities?.codexNative?.loggedInWithChatGPT ? "text-secondary" : "text-muted-foreground")}>
-                {capabilities?.codexNative?.loggedInWithChatGPT ? "已连接" : "未登录"}
-              </Badge>
-            </div>
-            <div className="setting-status-row">
-              <span>图片</span>
-              <Badge variant="outline" className={cn("rounded-md", capabilities?.codexNative?.imageGeneration ? "text-secondary" : "text-destructive")}>
-                {capabilities?.codexNative?.imageGeneration ? "启用" : "未启用"}
-              </Badge>
-            </div>
-            <div className="setting-status-row">
-              <span>工具</span>
-              <Badge variant="outline" className={cn("rounded-md", capabilities?.codexNative?.toolSearch ? "text-secondary" : "text-destructive")}>
-                {capabilities?.codexNative?.toolSearch ? "启用" : "未启用"}
-              </Badge>
+      <div className="settings-sections settings-sections--simple" data-active-group={activeSettingsGroup}>
+        <section className="settings-panel setting-card--connect">
+          <div className="settings-panel-head">
+            <h2>接入</h2>
+            <div className="settings-status-chips" aria-label="本机能力状态">
+              {nativeStatus.map((item) => (
+                <span key={item.label}>{item.label} {item.value}</span>
+              ))}
             </div>
           </div>
+          <SettingsField label="Agent 承载">
+            <SegmentedOptions
+              disabled={readOnly}
+              options={agentHostOptions.map((option) => ({ value: option.id, label: option.name, title: option.detail }))}
+              value={settings.agentHost ?? "codex_native"}
+              onChange={(value) => onSettings({ agentHost: value as AgentHost })}
+            />
+          </SettingsField>
+          <SettingsField label="模型来源">
+            <SegmentedOptions
+              disabled={readOnly}
+              options={modelProviderOptions.map((option) => ({ value: option.id, label: modelProviderDisplayLabels[option.id], title: option.detail }))}
+              value={settings.modelProvider ?? "codex_oauth"}
+              onChange={(value) => onSettings({ modelProvider: value as ModelProvider })}
+            />
+          </SettingsField>
+          <SettingsField label="素材来源">
+            <SegmentedOptions
+              disabled={readOnly}
+              options={visualProviderOptions.map((option) => ({ value: option.id, label: option.name, title: option.detail }))}
+              value={settings.visualProvider ?? "codex_imagegen"}
+              onChange={(value) => onSettings({ visualProvider: value as VisualProvider })}
+            />
+          </SettingsField>
         </section>
 
-        <section className="setting-card setting-card--wide setting-card--compact setting-card--connect">
-          <div>
-            <SectionLabel>Agent</SectionLabel>
-            <h2>Agent 承载</h2>
+        <section className="settings-panel setting-card--models">
+          <div className="settings-panel-head">
+            <h2>模型</h2>
           </div>
-          <div className="setting-choice-list">
-            {agentHostOptions.map((option) => (
-              <button
-                key={option.id}
-                type="button"
-                className={cn("choice-row", (settings.agentHost ?? "codex_native") === option.id && "choice-row--active")}
-                disabled={readOnly}
-                onClick={() => onSettings({ agentHost: option.id })}
-                aria-label={`${option.name}: ${option.detail}`}
-                title={option.detail}
-              >
-                <span>{option.name}</span>
-              </button>
-            ))}
-          </div>
-        </section>
-
-        <section className="setting-card setting-card--wide setting-card--compact setting-card--provider setting-card--connect">
-          <div>
-            <SectionLabel>模型供应商</SectionLabel>
-            <h2>模型来源</h2>
-          </div>
-          <div className="setting-choice-list">
-            {modelProviderOptions.map((option) => (
-              <button
-                key={option.id}
-                type="button"
-                className={cn("choice-row", (settings.modelProvider ?? "codex_oauth") === option.id && "choice-row--active")}
-                disabled={readOnly}
-                onClick={() => onSettings({ modelProvider: option.id })}
-                aria-label={`${option.name}: ${option.detail}; ${option.env}`}
-                title={`${option.detail} ${option.env}`}
-              >
-                <span>{modelProviderDisplayLabels[option.id]}</span>
-                <span className="choice-row-note">{modelProviderEnvLabels[option.id]}</span>
-              </button>
-            ))}
-          </div>
-        </section>
-
-        <section className="setting-card setting-card--wide setting-card--compact setting-card--connect">
-          <div>
-            <SectionLabel>素材</SectionLabel>
-            <h2>素材来源</h2>
-          </div>
-          <div className="setting-choice-list">
-            {visualProviderOptions.map((option) => (
-              <button
-                key={option.id}
-                type="button"
-                className={cn("choice-row", (settings.visualProvider ?? "codex_imagegen") === option.id && "choice-row--active")}
-                disabled={readOnly}
-                onClick={() => onSettings({ visualProvider: option.id })}
-                aria-label={`${option.name}: ${option.detail}`}
-                title={option.detail}
-              >
-                <span>{option.name}</span>
-              </button>
-            ))}
-          </div>
-        </section>
-
-        <section className="setting-card setting-card--models">
-          <div>
-            <SectionLabel>图片</SectionLabel>
-            <h2>图片生成模型</h2>
-            <p>Asset Agent 默认模型。</p>
-          </div>
-          <div className="setting-choice-list">
-            {imageModelOptions.map((model) => (
-              <button
-                key={model}
-                type="button"
-                className={cn("choice-row", (settings.imageModel ?? "gpt-image-2") === model && "choice-row--active")}
-                disabled={readOnly}
-                onClick={() => onSettings({ imageModel: model })}
-              >
-                <span>{model}</span>
-                <span>{model === "gpt-image-2" ? "默认质量" : "旧版备用"}</span>
-              </button>
-            ))}
-          </div>
-        </section>
-
-        <section className="setting-card setting-card--wide setting-card--models">
-          <div>
-            <SectionLabel>模型策略</SectionLabel>
-            <h2>Agent 模型策略</h2>
-            <p>角色、推理强度、能力一屏配置。</p>
-          </div>
-          <div className="model-policy-list" aria-label="Agent 模型策略">
-            {agentSkills.map((agent) => {
-              const policy = settings.modelPolicy?.[agent.id] ?? { model: "codex-default", thinkingLevel: "medium", thinkingLabel: "中", capabilities: [] }
-              const capabilitiesLabel = policy.capabilities?.length ? policy.capabilities.join(", ") : "标准"
-              return (
-                <article key={agent.id} className="model-policy-card">
-                  <div className="model-policy-agent">
-                    <AgentGlyph agent={agent} status="idle" />
-                    <div>
-                      <strong>{agent.shortName}</strong>
-                      <span>{agent.role}</span>
-                    </div>
-                  </div>
-                  <label className="model-policy-control">
-                    <span>模型</span>
+          <SettingsField label="图片模型">
+            <SegmentedOptions
+              disabled={readOnly}
+              options={imageModelOptions.map((model) => ({ value: model, label: model }))}
+              value={settings.imageModel ?? "gpt-image-2"}
+              onChange={(value) => onSettings({ imageModel: value })}
+            />
+          </SettingsField>
+          <div className="settings-field settings-field--stack">
+            <div className="settings-field-label">Agent 模型</div>
+            <div className="model-policy-list model-policy-list--simple" aria-label="Agent 模型策略">
+              {agentSkills.map((agent) => {
+                const policy = settings.modelPolicy?.[agent.id] ?? { model: "codex-default", thinkingLevel: "medium", thinkingLabel: "中", capabilities: [] }
+                return (
+                  <article key={agent.id} className="model-policy-card model-policy-card--simple">
+                    <strong>{agent.shortName}</strong>
                     <select
                       className="inspector-select model-policy-select"
                       value={policy.model}
                       disabled={readOnly}
                       onChange={(event) => updateAgentPolicy(agent.id, { model: event.target.value })}
+                      aria-label={`${agent.shortName} 模型`}
                     >
                       {modelOptions.map((model) => <option key={model} value={model}>{modelDisplayName(model)}</option>)}
                     </select>
-                  </label>
-                  <label className="model-policy-control">
-                    <span>推理</span>
                     <select
                       className="inspector-select model-policy-select"
                       value={policy.thinkingLevel}
                       disabled={readOnly}
                       onChange={(event) => updateAgentPolicy(agent.id, { thinkingLevel: event.target.value as AgentThinkingLevel })}
+                      aria-label={`${agent.shortName} 推理强度`}
                     >
                       {thinkingOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                     </select>
-                  </label>
-                  <div className="model-policy-capability">
-                    <span>能力</span>
-                    <strong>{capabilitiesLabel}</strong>
-                  </div>
-                </article>
-              )
-            })}
+                  </article>
+                )
+              })}
+            </div>
           </div>
         </section>
 
-        <section className="setting-card setting-card--render">
-          <div>
-            <SectionLabel>运行时</SectionLabel>
-            <h2>视频运行时</h2>
-            <p>默认渲染栈。</p>
+        <section className="settings-panel setting-card--render">
+          <div className="settings-panel-head">
+            <h2>渲染</h2>
           </div>
-          <div className="setting-choice-list">
-            {(["hyperframes", "remotion"] as const).map((runtime) => (
-              <button
-                key={runtime}
-                type="button"
-                className={cn("choice-row", settings.defaultRuntime === runtime && "choice-row--active")}
-                disabled={readOnly}
-                onClick={() => onSettings({ defaultRuntime: runtime })}
-              >
-                <span>{runtime === "hyperframes" ? "HyperFrames" : "Remotion"}</span>
-                <span>{runtime === "hyperframes" ? "HTML + GSAP 动效" : "React 合成"}</span>
-              </button>
-            ))}
-          </div>
+          <SettingsField label="视频运行时">
+            <SegmentedOptions
+              disabled={readOnly}
+              options={[
+                { value: "hyperframes", label: "HyperFrames" },
+                { value: "remotion", label: "Remotion" },
+              ]}
+              value={settings.defaultRuntime}
+              onChange={(value) => onSettings({ defaultRuntime: value as Exclude<RuntimeId, "auto"> })}
+            />
+          </SettingsField>
+          <SettingsField label="界面模式">
+            <SegmentedOptions
+              disabled={readOnly}
+              options={[
+                { value: "simple", label: "简洁" },
+                { value: "power", label: "完整信息" },
+              ]}
+              value={settings.layoutMode}
+              onChange={(value) => onSettings({ layoutMode: value as LayoutMode })}
+            />
+          </SettingsField>
         </section>
 
-        <section className="setting-card setting-card--render">
-          <div>
-            <SectionLabel>界面</SectionLabel>
-            <h2>界面模式</h2>
-            <p>选择控制台信息量。</p>
+        <section className="settings-panel setting-card--automation">
+          <div className="settings-panel-head">
+            <h2>自动化</h2>
           </div>
-          <div className="setting-choice-list">
-            {(["simple", "power"] as const).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                className={cn("choice-row", settings.layoutMode === mode && "choice-row--active")}
-                disabled={readOnly}
-                onClick={() => onSettings({ layoutMode: mode })}
-              >
-                <span>{mode === "simple" ? "简洁" : "完整信息"}</span>
-                <span>{mode === "simple" ? "聚焦制作界面" : "显示诊断信息"}</span>
-              </button>
-            ))}
-          </div>
-        </section>
-
-        <section className="setting-card setting-card--wide setting-card--automation">
-          <div>
-            <SectionLabel>自动化</SectionLabel>
-            <h2>自动执行</h2>
-            <p>质量门通过才继续；失败停在对应 Agent。</p>
-          </div>
-          <p className="automation-policy-preview">默认自动推进。素材、渲染或质检不达标时，只返修对应环节。</p>
+          <SettingsField label="执行策略">
+            <div className="settings-readonly-value">自动推进，失败停在对应环节</div>
+          </SettingsField>
+          <SettingsField label="质量门">
+            <div className="settings-readonly-value">素材、渲染、质检必须通过</div>
+          </SettingsField>
         </section>
         </div>
     </section>
+  )
+}
+
+function SettingsField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="settings-field">
+      <div className="settings-field-label">{label}</div>
+      <div className="settings-field-control">{children}</div>
+    </div>
+  )
+}
+
+function SegmentedOptions({
+  disabled,
+  options,
+  value,
+  onChange,
+}: {
+  disabled?: boolean
+  options: Array<{ value: string; label: string; title?: string }>
+  value: string
+  onChange: (value: string) => void
+}) {
+  return (
+    <div className="settings-segmented">
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          className={cn("settings-segment", value === option.value && "settings-segment--active")}
+          disabled={disabled}
+          onClick={() => onChange(option.value)}
+          title={option.title}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
   )
 }
 
