@@ -36,6 +36,7 @@ const rootDir = resolve(fileURLToPath(new URL("..", import.meta.url)))
 const stateDir = resolve(process.env.AUTODIRECTOR_STATE_DIR ?? join(rootDir, ".autodirector"))
 const statePath = join(stateDir, "state.json")
 const distDir = join(rootDir, "dist")
+const publicControlUiDir = join(rootDir, "intro-site", "control-ui")
 const runsDir = join(stateDir, "runs")
 const projectSlug = basename(rootDir).replace(/[^a-z0-9._-]+/gi, "-").replace(/^-+|-+$/g, "") || "project"
 const codexWorkDir = resolve(process.env.AUTODIRECTOR_CODEX_WORKDIR ?? join(homedir(), ".autodirector", "codex-workspaces", projectSlug))
@@ -6024,23 +6025,47 @@ async function routeApi(req, res, url) {
   json(res, 404, { error: "not_found" })
 }
 
-function serveStatic(req, res, url) {
-  if (!existsSync(distDir)) return text(res, 404, "Run npm run build before npm run start.")
-  const pathname = url.pathname === "/" ? "/index.html" : decodeURIComponent(url.pathname)
-  const candidate = resolve(join(distDir, pathname))
-  const filePath = isPathInsideDir(candidate, distDir) && existsSync(candidate) ? candidate : join(distDir, "index.html")
+function serveStaticFile(req, res, filePath) {
   const contentTypes = {
     ".html": "text/html; charset=utf-8",
     ".js": "text/javascript; charset=utf-8",
     ".css": "text/css; charset=utf-8",
     ".svg": "image/svg+xml",
     ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
   }
   res.writeHead(200, {
     "content-type": contentTypes[extname(filePath)] ?? "application/octet-stream",
     "cache-control": "no-store, max-age=0",
   })
+  if (req.method === "HEAD") return res.end()
   createReadStream(filePath).pipe(res)
+}
+
+function serveStaticFromDir(req, res, root, pathname, fallback = "index.html") {
+  if (!existsSync(root)) return false
+  const normalized = pathname === "/" || pathname === "" ? `/${fallback}` : decodeURIComponent(pathname)
+  const candidate = resolve(join(root, normalized))
+  const filePath = isPathInsideDir(candidate, root) && existsSync(candidate) ? candidate : join(root, fallback)
+  if (!existsSync(filePath)) return false
+  serveStaticFile(req, res, filePath)
+  return true
+}
+
+function serveStatic(req, res, url) {
+  if (url.pathname === "/control-ui") {
+    res.writeHead(302, { location: "/control-ui/" })
+    return res.end()
+  }
+  if (url.pathname === "/control-ui/" || url.pathname.startsWith("/control-ui/")) {
+    const controlPath = url.pathname.replace(/^\/control-ui/, "") || "/"
+    if (serveStaticFromDir(req, res, publicControlUiDir, controlPath)) return
+  }
+  if (!existsSync(distDir)) return text(res, 404, "Run npm run build before npm run start.")
+  const pathname = url.pathname === "/" ? "/index.html" : decodeURIComponent(url.pathname)
+  serveStaticFromDir(req, res, distDir, pathname)
 }
 
 const mainServer = createServer(async (req, res) => {

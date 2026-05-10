@@ -9,9 +9,9 @@ import {
   FileCode2,
   Film,
   FolderOpen,
-  Grid2X2,
   KeyRound,
   Layers3,
+  MessageSquare,
   MonitorPlay,
   Play,
   Plus,
@@ -44,7 +44,7 @@ type VisualProvider = "codex_imagegen" | "openai_image_api" | "user_upload" | "p
 type LayoutMode = "simple" | "power"
 type AuthStatus = "disconnected" | "connected"
 type ExecutionMode = "codex_native" | "oauth_agents" | "legacy_template"
-type AppView = "orchestrate" | "agents" | "delivery" | "settings"
+type AppView = "chat" | "agents" | "delivery" | "settings"
 type SettingsGroup = "connect" | "models" | "render" | "automation"
 type InspectorMode = "agent" | "artifact" | "runtime" | "quality" | "final"
 type AgentThinkingLevel = "low" | "medium" | "high" | "xhigh"
@@ -253,7 +253,7 @@ type ProducerChatResponse = {
 }
 
 const navItems: Array<{ id: AppView; label: string; icon: LucideIcon }> = [
-  { id: "orchestrate", label: "项目", icon: Grid2X2 },
+  { id: "chat", label: "聊天", icon: MessageSquare },
   { id: "agents", label: "团队", icon: Bot },
   { id: "delivery", label: "交付", icon: MonitorPlay },
   { id: "settings", label: "设置", icon: Settings },
@@ -358,12 +358,15 @@ const settingsGroups: Array<{ id: SettingsGroup; label: string; detail: string }
   { id: "render", label: "渲染", detail: "运行环境" },
   { id: "automation", label: "自动化", detail: "质量门" },
 ]
-const appViews: AppView[] = ["orchestrate", "agents", "delivery", "settings"]
-const isAppView = (value: string | null): value is AppView => Boolean(value && appViews.includes(value as AppView))
+const appViews: AppView[] = ["chat", "agents", "delivery", "settings"]
+const coerceAppView = (value: string | null): AppView | null => {
+  if (value === "orchestrate") return "chat"
+  return value && appViews.includes(value as AppView) ? value as AppView : null
+}
 const initialAppView = (): AppView => {
-  if (typeof window === "undefined") return "orchestrate"
+  if (typeof window === "undefined") return "chat"
   const view = new URLSearchParams(window.location.search).get("view")
-  return isAppView(view) ? view : "orchestrate"
+  return coerceAppView(view) ?? "chat"
 }
 const runStatusLabels: Record<string, string> = {
   active: "进行中",
@@ -374,7 +377,13 @@ const runStatusLabels: Record<string, string> = {
   ready_to_package: "待打包",
 }
 const imageModelOptions = ["gpt-image-2", "gpt-image-1.5"]
-const READONLY_PUBLIC_DEMO = import.meta.env.VITE_AUTODIRECTOR_READONLY_DEMO === "1"
+const READONLY_PUBLIC_DEMO_BUILD = import.meta.env.VITE_AUTODIRECTOR_READONLY_DEMO === "1"
+const initialReadOnlyDemoMode = () => {
+  if (READONLY_PUBLIC_DEMO_BUILD) return true
+  if (typeof window === "undefined") return false
+  const params = new URLSearchParams(window.location.search)
+  return params.get("demo") === "readonly" || params.get("readonly") === "1"
+}
 const readonlyDeliveryAssetBaseName = "musk-altman-agentteam-v10"
 const readonlyDeliveryAssets = {
   outputDir: "../assets",
@@ -383,6 +392,7 @@ const readonlyDeliveryAssets = {
   mediaFile: `${readonlyDeliveryAssetBaseName}.mp4`,
 }
 const appAssetUrl = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\/+/, "")}`
+const apiPath = (...parts: string[]) => `/${["api", ...parts].join("/")}`
 
 function normalizeDisplayText(value: string) {
   return value
@@ -547,12 +557,13 @@ function createReadOnlyBootstrap(): BootstrapState {
         appServer: false,
       },
       matrix: {},
-      policy: "公开只读版本：无 API 调用，无 Agent 对话，无执行权限。",
+      policy: "只读演示：页面可浏览，Agent 对话发送、生成和写入权限禁用。",
     },
   }
 }
 
 function App() {
+  const [readOnlyDemo] = useState(initialReadOnlyDemoMode)
   const [bootstrap, setBootstrap] = useState<BootstrapState | null>(null)
   const [activeView, setActiveView] = useState<AppView>(initialAppView)
   const [inspectorMode, setInspectorMode] = useState<InspectorMode>("agent")
@@ -570,7 +581,7 @@ function App() {
     setActiveView(view)
     if (typeof window === "undefined") return
     const url = new URL(window.location.href)
-    if (view === "orchestrate") {
+    if (view === "chat") {
       url.searchParams.delete("view")
     } else {
       url.searchParams.set("view", view)
@@ -579,47 +590,47 @@ function App() {
   }
 
   useEffect(() => {
-    if (READONLY_PUBLIC_DEMO) {
+    if (readOnlyDemo) {
       setBootstrap(normalizeBootstrapForDisplay(createReadOnlyBootstrap()))
       return undefined
     }
-    api<BootstrapState>("/api/bootstrap").then((state) => setBootstrap(normalizeBootstrapForDisplay(state))).catch(() => undefined)
-    const events = new EventSource("/api/events")
+    api<BootstrapState>(apiPath("bootstrap")).then((state) => setBootstrap(normalizeBootstrapForDisplay(state))).catch(() => undefined)
+    const events = new EventSource(apiPath("events"))
     events.addEventListener("state", (event) => {
       setBootstrap(normalizeBootstrapForDisplay(JSON.parse((event as MessageEvent).data)))
     })
     events.onerror = () => events.close()
     return () => events.close()
-  }, [])
+  }, [readOnlyDemo])
 
   async function connectChatGpt() {
-    if (READONLY_PUBLIC_DEMO) return
+    if (readOnlyDemo) return
     window.location.assign("/oauth/start")
   }
 
   async function saveSettings(settings: Partial<AppSettings>) {
-    if (READONLY_PUBLIC_DEMO) return
-    setBootstrap(normalizeBootstrapForDisplay(await api<BootstrapState>("/api/settings", { method: "PATCH", body: settings })))
+    if (readOnlyDemo) return
+    setBootstrap(normalizeBootstrapForDisplay(await api<BootstrapState>(apiPath("settings"), { method: "PATCH", body: settings })))
   }
 
   async function completeOnboarding(settings: Pick<AppSettings, "defaultRuntime" | "layoutMode" | "agentHost" | "modelProvider" | "visualProvider">) {
-    if (READONLY_PUBLIC_DEMO) return
-    setBootstrap(normalizeBootstrapForDisplay(await api<BootstrapState>("/api/onboarding", { method: "POST", body: settings })))
+    if (readOnlyDemo) return
+    setBootstrap(normalizeBootstrapForDisplay(await api<BootstrapState>(apiPath("onboarding"), { method: "POST", body: settings })))
     startDraft()
   }
 
   async function createRun() {
-    if (READONLY_PUBLIC_DEMO) return
-    const next = await api<BootstrapState>("/api/runs", { method: "POST", body: { brief: productionBrief() } })
+    if (readOnlyDemo) return
+    const next = await api<BootstrapState>(apiPath("runs"), { method: "POST", body: { brief: productionBrief() } })
     setBootstrap(normalizeBootstrapForDisplay(next))
     setDraftOpen(false)
-    changeView("orchestrate")
+    changeView("chat")
   }
 
   async function dispatchNext() {
-    if (READONLY_PUBLIC_DEMO) return
+    if (readOnlyDemo) return
     if (!bootstrap?.activeRunId) return
-    const next = await api<BootstrapState>(`/api/runs/${bootstrap.activeRunId}/dispatch-next`, { method: "POST" })
+    const next = await api<BootstrapState>(apiPath("runs", bootstrap.activeRunId, "dispatch-next"), { method: "POST" })
     setBootstrap(normalizeBootstrapForDisplay(next))
     if (next.activeRun?.status === "final") {
       changeView("delivery")
@@ -628,20 +639,21 @@ function App() {
   }
 
   async function activateRun(runId: string) {
-    if (READONLY_PUBLIC_DEMO) return
-    const next = await api<BootstrapState>(`/api/runs/${runId}/activate`, { method: "POST" })
+    if (readOnlyDemo) return
+    const next = await api<BootstrapState>(apiPath("runs", runId, "activate"), { method: "POST" })
     setBootstrap(normalizeBootstrapForDisplay(next))
     setDraftOpen(false)
-    changeView("orchestrate")
+    changeView("chat")
     setInspectorOpen(false)
     setInspectedAgentId(null)
   }
 
   function startDraft() {
+    if (readOnlyDemo) return
     setDraftOpen(true)
     setDraftMessages([])
     setMessage("")
-    changeView("orchestrate")
+    changeView("chat")
     setInspectorOpen(false)
     setInspectedAgentId(null)
   }
@@ -653,7 +665,7 @@ function App() {
   }
 
   async function sendDraftMessage() {
-    if (READONLY_PUBLIC_DEMO) return
+    if (readOnlyDemo) return
     const text = message.trim()
     if (!text || draftBusy) return
     const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
@@ -718,7 +730,7 @@ function App() {
   return (
     <div className="control-shell">
       <ProjectSidebar
-        readOnly={READONLY_PUBLIC_DEMO}
+        readOnly={readOnlyDemo}
         activeView={activeView}
         setActiveView={changeView}
         runs={bootstrap.runs}
@@ -730,13 +742,13 @@ function App() {
 
       <div className="app-main">
         <GlobalHeader
-          readOnly={READONLY_PUBLIC_DEMO}
+          readOnly={readOnlyDemo}
           run={visibleRun}
           onOpenSetup={() => setSetupOpen(true)}
         />
-        {READONLY_PUBLIC_DEMO ? (
+        {readOnlyDemo ? (
           <div className="readonly-banner" role="status">
-            作品展示模式：Agent 对话和视频生成已禁用。下载源码包本地运行可体验完整自动化。
+            只读演示：所有页面可浏览，发送消息、生成视频和写入设置已禁用。
           </div>
         ) : null}
         <main className="producer-zone">
@@ -752,10 +764,10 @@ function App() {
           ) : activeView === "delivery" ? (
             <FinalDeliveryView run={activeRun} runtimeName={runtimePack.name} />
           ) : activeView === "settings" ? (
-            <SettingsView readOnly={READONLY_PUBLIC_DEMO} settings={bootstrap.settings} capabilities={bootstrap.capabilities} openaiAccount={bootstrap.openaiAccount} onConnect={connectChatGpt} onSettings={saveSettings} />
+            <SettingsView readOnly={readOnlyDemo} settings={bootstrap.settings} capabilities={bootstrap.capabilities} openaiAccount={bootstrap.openaiAccount} onConnect={connectChatGpt} onSettings={saveSettings} />
           ) : (
             <ProducerWorkbench
-              readOnly={READONLY_PUBLIC_DEMO}
+              readOnly={readOnlyDemo}
               message={message}
               setMessage={setMessage}
               activeRun={visibleRun}
@@ -792,7 +804,7 @@ function App() {
 
       <button
         type="button"
-        className={cn("audit-fab", activeView !== "orchestrate" && "audit-fab--quiet", runBlocked && "audit-fab--blocked")}
+        className={cn("audit-fab", activeView !== "chat" && "audit-fab--quiet", runBlocked && "audit-fab--blocked")}
         onClick={() => setBottomOpen(!bottomOpen)}
         aria-label={bottomOpen ? "收起进度控制台" : runBlocked ? "打开素材修复控制台" : visibleRun?.status === "final" ? "打开交付控制台" : "打开进度控制台"}
       >
@@ -829,7 +841,7 @@ async function api<T>(path: string, init?: { method?: string; body?: unknown }) 
 }
 
 async function streamProducerChat(body: unknown, onDelta: (delta: string) => void) {
-  const response = await fetch("/api/producer-chat/stream", {
+  const response = await fetch(apiPath("producer-chat", "stream"), {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -1165,7 +1177,7 @@ function ProducerWorkbench({
       </div>
 
       <WorkspaceTimeline completedSteps={completedSteps} draftOpen={draftOpen} />
-      <ProductionEtaCard run={activeRun} draftOpen={draftOpen} />
+      <ProductionEtaCard readOnly={readOnly} run={activeRun} draftOpen={draftOpen} />
       <LiveActivityFeed run={activeRun} draftOpen={draftOpen} completedSteps={completedSteps} events={events} />
 
       <div className="workbench-body">
@@ -1183,7 +1195,7 @@ function ProducerWorkbench({
                   </ProducerMessage>
                   <ProducerMessage timestamp={runBlocked ? "已阻塞" : "流水线"}>
                     <p>{activeRun ? `当前项目：${activeRun.id}。下一步：${activeStep?.managerLine ?? "准备交付"}` : "还没有项目。点“新建”后 Producer 会先问清楚需求，再开始制作。"}</p>
-                    {runBlocked ? (READONLY_PUBLIC_DEMO ? <BlockedImagegenReadOnlyNotice run={activeRun} /> : <BlockedImagegenNotice run={activeRun} />) : null}
+                    {runBlocked ? (readOnly ? <BlockedImagegenReadOnlyNotice run={activeRun} /> : <BlockedImagegenNotice run={activeRun} />) : null}
                     <HandoffCard step={activeStep} />
                   </ProducerMessage>
                 </>
@@ -1258,8 +1270,8 @@ function formatDuration(seconds?: number | null) {
   return `约 ${hours} 小时 ${minutes % 60} 分`
 }
 
-function ProductionEtaCard({ run, draftOpen }: { run: RunState | null; draftOpen: boolean }) {
-  if (READONLY_PUBLIC_DEMO) {
+function ProductionEtaCard({ readOnly, run, draftOpen }: { readOnly?: boolean; run: RunState | null; draftOpen: boolean }) {
+  if (readOnly) {
     const ready = run?.status === "final"
     return (
       <div className="production-eta" aria-label="演示进度">
@@ -2413,8 +2425,8 @@ function BlockedImagegenReadOnlyNotice({ run }: { run: RunState | null }) {
 
 function BlockedImagegenNotice({ run }: { run: RunState | null }) {
   const reasons = run?.package?.blockedReason?.length ? run.package.blockedReason : ["缺少 OAuth imagegen 主视觉，已停止渲染。"]
-  const requestPath = `/api/runs/${run?.id ?? ""}/files/blocked_imagegen_request.json`
-  const promptPath = `/api/runs/${run?.id ?? ""}/files/imagegen_prompt_pack.json`
+  const requestPath = apiPath("runs", run?.id ?? "", "files", "blocked_imagegen_request.json")
+  const promptPath = apiPath("runs", run?.id ?? "", "files", "imagegen_prompt_pack.json")
   return (
     <div className="blocked-notice">
       <div>

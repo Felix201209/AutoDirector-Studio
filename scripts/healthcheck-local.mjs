@@ -57,6 +57,7 @@ if (existsSync("intro-site")) {
 
   const manifest = JSON.parse(readFileSync("intro-site/demo-manifest.json", "utf8"))
   assert(manifest.publicShowcaseUrl === "https://autodirector.felixypz.me/", "demo manifest has wrong showcase URL")
+  assert(manifest.readOnlyControlUiViews?.includes("control-ui/?view=chat"), "demo manifest should expose the read-only Chat route")
   assert(manifest.publicDemoAssets?.finalVideo?.url?.endsWith("/assets/musk-altman-agentteam-v10.mp4"), "demo manifest missing final video URL")
   assert(manifest.publicDemoAssets?.deliveryPackage?.url?.endsWith("/assets/musk-altman-agentteam-v10-package.zip"), "demo manifest missing package URL")
 }
@@ -66,6 +67,9 @@ assert(generalExample.brief?.includes("smart water bottle"), "general example br
 assert(generalExample.requiredPipelineChecks?.length >= 6, "general example should exercise the Agent pipeline")
 
 const appSource = readFileSync("src/App.tsx", "utf8")
+assert(appSource.includes('params.get("demo") === "readonly"'), "actual app should support runtime read-only demo mode")
+assert(appSource.includes('{ id: "chat", label: "聊天"'), "Chat should be a first-level route")
+assert(appSource.includes('disabled={readOnly}'), "read-only UI should disable message entry and write controls")
 for (const providerNeedle of ["Anthropic API", "DeepSeek API", "Qwen API", "Custom Endpoint", "CUSTOM_MODEL_BASE_URL"]) {
   assert(appSource.includes(providerNeedle), `Settings UI should expose provider option ${providerNeedle}`)
 }
