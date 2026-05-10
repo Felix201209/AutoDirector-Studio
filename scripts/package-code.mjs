@@ -67,14 +67,6 @@ if (zipinfo.status !== 0) {
   throw new Error(zipinfo.stderr || zipinfo.stdout || "zipinfo failed")
 }
 
-const legacyEntryToken = (...parts) => parts.join("")
-const legacyEntryNames = [
-  legacyEntryToken("q", "a"),
-  legacyEntryToken("re", "view"),
-  legacyEntryToken("ap", "proval"),
-  legacyEntryToken("ac", "ceptance"),
-]
-
 const forbiddenEntryPatterns = [
   /(^|\/)__pycache__\//,
   /\.py[co]$/,
@@ -87,8 +79,8 @@ const forbiddenEntryPatterns = [
   /\.(png|jpe?g|webp|gif|mp4|mov|mp3|wav|aiff|ogg|m4a)$/i,
   /\.zip$/i,
   /\.log$/i,
-  new RegExp(`(^|/)(${legacyEntryNames.join("|")})([-_./]|$)`, "i"),
-  new RegExp(`(^|/)[^/]*(_${legacyEntryNames[0]}|_${legacyEntryNames[1]})([-_.]|$)`, "i"),
+  /(^|\/)(qa|review|approval|acceptance)([-_./]|$)/i,
+  /(^|\/)[^/]*(_qa|_review)([-_.]|$)/i,
 ]
 
 for (const entry of zipinfo.stdout.split(/\r?\n/)) {

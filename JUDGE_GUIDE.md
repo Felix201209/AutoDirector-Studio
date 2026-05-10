@@ -8,7 +8,7 @@ AutoDirector is built for the EasyClaw AI Agent Hackathon. The public website is
 2. Read the system summary on the homepage: multi-Agent team, real business scenario, runnable code, and traceable delivery.
 3. Open `team.html` and `pipeline.html`; the Handoff Trail shows each Agent's input, output, and artifact.
 4. Watch the 31s delivery video on the hosted delivery page.
-5. Open the read-only Control UI at `/control-ui/`.
+5. Open the read-only control UI at `/control-ui/`.
 6. Use the source ZIP to review the local server, React UI, Agent skills, packaging scripts, and verification commands.
 
 For a second scenario, inspect `examples/smart-water-bottle/brief.json` and its `evidence-plan.json`.
@@ -81,7 +81,11 @@ The source ZIP contains:
 - Existing-v10 package wrapper (`npm run package:v10-existing`)
 - General example brief and evidence plan under `examples/smart-water-bottle/`
 
-It intentionally excludes the public showcase site, public videos, audio, screenshots, generated delivery packages, built Control UI assets, local state, dependency folders, and machine-specific caches. The root `index.html` is retained because it is required by the runnable Vite app.
+It intentionally excludes the public showcase site, public videos, audio, screenshots, generated delivery packages, built control UI assets, local state, dependency folders, and machine-specific caches. The root `index.html` is retained because it is required by the runnable Vite app.
+
+## Design note
+
+The control UI uses a compact editorial control-room style, documented in `DESIGN.md` and reflected in the React/CSS implementation. Status color is functional: mint means ready/running, coral means active action, red means missing or blocked, and gray means optional or read-only.
 
 ## Known limitations
 
@@ -90,6 +94,7 @@ It intentionally excludes the public showcase site, public videos, audio, screen
 - Image generation may consume quota.
 - If image generation is unavailable, AutoDirector blocks final packaging instead of faking `final.mp4`.
 - Public demo assets are hosted separately from the source ZIP to keep the ZIP small.
+- Local `.autodirector/state.json` is machine-bound; rerun setup instead of copying state between machines.
 
 ## Safety note
 

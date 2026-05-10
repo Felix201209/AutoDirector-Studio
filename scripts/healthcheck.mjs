@@ -117,7 +117,7 @@ const controlUiPolishNeedles = [
   "Qwen API",
   "Custom Endpoint",
   "图片模型",
-  "公开视频 v10",
+  "交付样片 v10",
   "流水线时间轴",
   "工具控制台",
 ]
@@ -221,12 +221,12 @@ function assertHomeDemoPresent(html, label) {
   assert(html.includes("assets/autodirector-intro-edge.mp4"), `${label} should point at the intro demo video`)
   assert(!html.includes("只读 Web UI Demo"), `${label} should not show the removed fake Web UI demo`)
   assert(!html.includes("公网 demo 禁止输入"), `${label} should not include removed demo-only copy`)
-  assert(html.includes("control-ui/"), `${label} should link to the 1:1 read-only Control UI`)
+  assert(html.includes("control-ui/"), `${label} should link to the read-only Control UI`)
   assert(html.includes("多 Agent") && html.includes("视频制作团队"), `${label} should open with the product-specific multi-agent headline`)
   assert(html.includes("持久岗位"), `${label} should expose the agent-team size in the first viewport`)
   assert(html.includes("31s"), `${label} should expose the public film duration proof metric`)
   assert(html.includes("源码包边界"), `${label} should expose the source package boundary metric`)
-  assert(html.includes("静态展示站点"), `${label} should expose the static public-site proof metric`)
+  assert(html.includes("公开审阅站点"), `${label} should expose the static public-site proof metric`)
   assertNoPatterns(html, label, stalePublicAgentPatterns)
 }
 

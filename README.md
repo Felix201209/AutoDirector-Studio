@@ -95,7 +95,7 @@ The Web UI opens a step-by-step setup wizard:
 2. Select model provider: Codex/ChatGPT OAuth, ChatGPT/OpenAI API, Claude/Anthropic API, DeepSeek API, Qwen API, OpenAI-compatible custom endpoint, or external MCP/manual agent.
 3. Select visual provider: Codex/ChatGPT imagegen, OpenAI Image API, user upload, or public/source assets only.
 4. Select default video runtime: HyperFrames or Remotion.
-5. Select layout: Simple or Power User.
+5. Select layout: Simple or Full Detail.
 
 These choices can be changed later in Settings.
 
@@ -113,7 +113,7 @@ The default execution mode is `Codex Native`.
 AutoDirector starts a local Codex app-server and creates persistent Codex threads:
 
 - one Producer thread for normal Web UI conversation;
-- one independent Agent thread per production role after `Start production`;
+- one independent Agent thread per production role after production starts;
 - native `image_generation` and `tool_search` through the user's local Codex/ChatGPT login.
 
 Native Codex sessions are spawned outside the project directory by default, under `~/.autodirector/codex-workspaces/<project-name>`. Native session records, prompts, and event logs are also written outside the project by default, under `~/.autodirector/codex-sessions/<project-name>`. Set `AUTODIRECTOR_CODEX_WORKDIR` and `AUTODIRECTOR_CODEX_SESSION_DIR` to override those locations.
@@ -134,7 +134,7 @@ This route is useful when the user wants Codex itself to act as Producer through
 
 ## One-Click Video Generation
 
-After onboarding, send a normal message to Producer to shape the brief. AutoDirector will not start production from casual chat. Click `Start production` / `一键生成视频` when the brief is ready.
+After onboarding, send a normal message to Producer to shape the brief. AutoDirector will not start production from casual chat. Click `开始制作` when the brief is ready.
 
 The local server will:
 
@@ -234,7 +234,7 @@ AutoDirector is built around a simple product promise: turn a loose video brief 
 Submission artifacts:
 
 - Public project display site: `https://autodirector.felixypz.me/`
-- Public 1:1 read-only control UI: `https://autodirector.felixypz.me/control-ui/`
+- Public read-only control UI: `https://autodirector.felixypz.me/control-ui/`
 - Source ZIP: `autodirector-code.zip`
 - General sample brief: `examples/smart-water-bottle/brief.json`
 - General sample evidence plan: `examples/smart-water-bottle/evidence-plan.json`
@@ -244,7 +244,7 @@ Public review path:
 1. Open the public project display site.
 2. Read the homepage system summary: multi-Agent team, real business scenario, runnable code, and traceable delivery.
 3. Use `Team` and `Pipeline` to inspect the Handoff Trail: each Agent has an upstream input, downstream output, and concrete artifact.
-4. Use `Control UI` to inspect the 1:1 read-only console. It allows page navigation and state inspection, but does not connect to live Agents or mutate data.
+4. Use the read-only control UI to inspect the console. It allows page navigation and state inspection, but does not connect to live Agents or mutate data.
 5. Use `Details` and `Delivery` to inspect the final video, citations, quality evidence, package links, and the alternate product-launch brief.
 
 Local runnable path from the source ZIP:
@@ -299,6 +299,7 @@ npm run verify:full
 - Public demo assets are hosted separately from the source ZIP to keep the submitted code package small.
 - If image generation is unavailable, AutoDirector blocks final packaging instead of faking a final video.
 - Full native mode can create and modify files inside the selected workspace; evaluate it in a dedicated project directory.
+- Local state files are machine-bound. Do not copy `.autodirector/state.json` between devices; rerun setup on the target machine.
 
 ## License and review use
 
@@ -306,7 +307,7 @@ This submission is not open source. See `LICENSE`: source is provided for hackat
 
 ## Privacy
 
-AutoDirector runs locally by default. API keys and custom endpoint URLs are expected in local environment variables and are not saved by the Settings UI. The public showcase is static/read-only and should not expose local state, backend APIs, personal home paths, or generated source ZIPs.
+AutoDirector runs locally by default. API keys and custom endpoint URLs are expected in local environment variables and are not saved by the Settings UI. Local state is machine-bound by design. The public showcase is static/read-only and should not expose local state, backend APIs, personal home paths, or generated source ZIPs.
 
 ## Terms
 

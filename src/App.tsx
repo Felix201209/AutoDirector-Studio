@@ -396,6 +396,10 @@ const apiPath = (...parts: string[]) => `/${["api", ...parts].join("/")}`
 
 function normalizeDisplayText(value: string) {
   return value
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email]")
+    .replace(/(?:sk|ghp|gho|ghu|ghs|pat)_[A-Za-z0-9_=-]{12,}/g, "[secret]")
+    .replace(/(?<![A-Za-z0-9])sk-(?:proj-)?[A-Za-z0-9_-]{16,}/g, "[secret]")
+    .replace(new RegExp("\\/(?:Users|home)\\/[^/\\s\"')]+", "g"), "[local-path]")
 }
 
 function normalizeDisplayValue<T>(value: T): T {
@@ -422,7 +426,7 @@ function createReadOnlyBootstrap(): BootstrapState {
   ])) as Record<string, AgentModelPolicy>
   const run: RunState = {
     id: "run_public_readonly",
-    title: "公开视频 v10",
+    title: "交付样片 v10",
     brief: "制作一条 30 秒新闻科普短片，完整保留 Agent 交接和质量证据。",
     runtime: "hyperframes",
     layoutMode: "simple",
@@ -452,7 +456,7 @@ function createReadOnlyBootstrap(): BootstrapState {
       createdAt: new Date(Date.now() - (seedArtifacts.length - index) * 90_000).toISOString(),
     })),
     logs: [
-      "公开只读版本：不连接后端，不改数据。",
+      "审阅模式：页面可浏览，不连接后端。",
       "Producer 已生成任务图和通过条件。",
       "Agent 团队已完成 artifact 交接。",
       "Quality Gate 已通过交付包检查。",
@@ -548,16 +552,16 @@ function createReadOnlyBootstrap(): BootstrapState {
       modelProviders: modelProviderOptions,
       codexNative: {
         available: false,
-        binary: "public-readonly",
+        binary: "review-mode",
         version: null,
-        login: "disabled on public site",
+        login: "review mode",
         loggedInWithChatGPT: false,
         imageGeneration: false,
         toolSearch: false,
         appServer: false,
       },
       matrix: {},
-      policy: "只读演示：页面可浏览，Agent 对话发送、生成和写入权限禁用。",
+      policy: "审阅模式：页面可浏览，发送、生成和写入权限关闭。",
     },
   }
 }
@@ -748,7 +752,7 @@ function App() {
         />
         {readOnlyDemo ? (
           <div className="readonly-banner" role="status">
-            只读演示：所有页面可浏览，发送消息、生成视频和写入设置已禁用。
+            审阅模式：所有页面可浏览；发送、生成和写入已关闭。
           </div>
         ) : null}
         <main className="producer-zone">
@@ -920,11 +924,11 @@ function GlobalHeader({
   onOpenSetup: () => void
 }) {
   const runBlocked = run?.status === "blocked" || run?.package?.status === "blocked"
-  const runStateLabel = readOnly ? "静态演示" : runBlocked ? "已阻塞" : run?.status === "final" ? "已交付" : run ? "自动化中" : "草稿"
+  const runStateLabel = readOnly ? "只读审阅" : runBlocked ? "已阻塞" : run?.status === "final" ? "已交付" : run ? "自动化中" : "草稿"
   const runIdLabel = run?.id ? run.id.replace(/^run_/, "#") : "未开始"
   const activeStep = run ? timeline[Math.min(run.completedSteps ?? 0, timeline.length - 1)] : null
   const headerTitle = readOnly ? "作品展示控制台" : "自动化制作控制台"
-  const headerMeta = readOnly ? "公开视频 · 只读" : run ? `${activeStep?.label ?? "Pipeline"} · ${runStateLabel}` : "等待 brief"
+  const headerMeta = readOnly ? "交付样片 · 只读" : run ? `${activeStep?.label ?? "Pipeline"} · ${runStateLabel}` : "等待 brief"
   return (
     <header className="control-header">
       <div className="header-project-block">
@@ -949,9 +953,9 @@ function GlobalHeader({
           <KeyRound className="size-3.5" aria-hidden="true" />
           {readOnly ? "只读" : "连接"}
         </button>
-        <div className="automation-pill" aria-label={readOnly ? "演示模式" : "自动化模式"}>
+        <div className="automation-pill" aria-label={readOnly ? "审阅模式" : "自动化模式"}>
           <Check className="size-3.5" aria-hidden="true" />
-          {readOnly ? "静态演示" : "自动"}
+          {readOnly ? "审阅" : "自动"}
         </div>
       </div>
     </header>
@@ -1018,7 +1022,7 @@ function ProjectSidebar({
             <SectionLabel>历史</SectionLabel>
             <span>{historyRuns.length}</span>
           </button>
-          <Button size="icon" className="size-7 rounded-lg" onClick={onCreateRun} disabled={readOnly} aria-label={readOnly ? "演示模式" : "新建项目"}>
+          <Button size="icon" className="size-7 rounded-lg" onClick={onCreateRun} disabled={readOnly} aria-label={readOnly ? "只读审阅" : "新建项目"}>
             <Plus className="size-3.5" aria-hidden="true" />
           </Button>
         </div>
@@ -1213,7 +1217,7 @@ function ProducerWorkbench({
                 onChange={(event) => setMessage(event.target.value)}
                 className="min-h-11 resize-none rounded-lg border-border bg-background text-sm"
                 disabled={readOnly}
-                placeholder={readOnly ? "1:1 只读展示：Agent 对话不可用。" : draftOpen ? "描述你要生产的视频..." : "输入新需求或直接继续自动流水线..."}
+                placeholder={readOnly ? "审阅模式下不能发送消息。" : draftOpen ? "描述你要生产的视频..." : "输入新需求或直接继续自动流水线..."}
               />
               <Button
                 className={cn("rounded-lg", runBlocked && "blocked-action")}
@@ -1221,7 +1225,7 @@ function ProducerWorkbench({
                 disabled={readOnly || (draftOpen ? !message.trim() || draftBusy : !isConnected || runFinal || runBlocked)}
               >
                 <Send data-icon="inline-start" aria-hidden="true" />
-                {readOnly ? "不可用" : draftOpen ? draftBusy ? "处理中" : "发送" : runFinal ? "已完成" : runBlocked ? "已阻塞" : activeRun ? "继续" : "新建"}
+                {readOnly ? "只读" : draftOpen ? draftBusy ? "处理中" : "发送" : runFinal ? "已完成" : runBlocked ? "已阻塞" : activeRun ? "继续" : "新建"}
               </Button>
             </div>
           </div>
@@ -1274,14 +1278,14 @@ function ProductionEtaCard({ readOnly, run, draftOpen }: { readOnly?: boolean; r
   if (readOnly) {
     const ready = run?.status === "final"
     return (
-      <div className="production-eta" aria-label="演示进度">
+      <div className="production-eta" aria-label="审阅进度">
         <div className="production-eta-primary">
           <span className="production-eta-icon" aria-hidden="true">
             <Timer size={16} />
           </span>
           <div>
-            <SectionLabel>演示状态</SectionLabel>
-            <strong>{ready ? "公开视频已交付" : "只读预览"}</strong>
+            <SectionLabel>审阅状态</SectionLabel>
+            <strong>{ready ? "样片已交付" : "只读审阅"}</strong>
           </div>
         </div>
         <div className="production-eta-grid">
@@ -2060,21 +2064,21 @@ function SettingsView({
   const selectedModelProvider = settings.modelProvider ?? "codex_oauth"
   const selectedVisualProvider = settings.visualProvider ?? "codex_imagegen"
   const modelSourceStatus: SettingStatus = readOnly
-    ? { label: "演示", tone: "muted" }
+    ? { label: "只读", tone: "muted" }
     : selectedModelProvider === "codex_oauth"
       ? oauthConnected ? { label: "已配置", tone: "ok" } : { label: "未配置", tone: "warn" }
       : selectedModelProvider === "custom_mcp"
         ? { label: "需 MCP", tone: "warn" }
         : { label: "需环境变量", tone: "warn" }
   const visualSourceStatus: SettingStatus = readOnly
-    ? { label: "演示", tone: "muted" }
+    ? { label: "只读", tone: "muted" }
     : selectedVisualProvider === "codex_imagegen"
       ? capabilities?.codexNative?.imageGeneration ? { label: "已配置", tone: "ok" } : { label: "未启用", tone: "warn" }
       : selectedVisualProvider === "openai_image_api"
         ? { label: "需 Key", tone: "warn" }
         : { label: "可用", tone: "ok" }
   const agentHostStatus: SettingStatus = readOnly
-    ? { label: "演示", tone: "muted" }
+    ? { label: "只读", tone: "muted" }
     : capabilities?.codexNative?.appServer
       ? { label: "已配置", tone: "ok" }
       : { label: "未配置", tone: "warn" }
@@ -2095,7 +2099,7 @@ function SettingsView({
         </div>
         <Button className="settings-primary-action" onClick={onConnect} disabled={readOnly}>
           <KeyRound data-icon="inline-start" aria-hidden="true" />
-          {readOnly ? "演示模式" : oauthConnected ? "OAuth 已连接" : "连接 OpenAI"}
+          {readOnly ? "只读审阅" : oauthConnected ? "OAuth 已连接" : "连接 OpenAI"}
         </Button>
       </div>
 
@@ -2164,7 +2168,7 @@ function SettingsView({
           <div className="settings-field settings-field--stack">
             <div className="settings-field-label">
               <span>Agent 模型</span>
-              <SettingsStatus label={readOnly ? "演示" : "已配置"} tone={readOnly ? "muted" : "ok"} />
+              <SettingsStatus label={readOnly ? "只读" : "已配置"} tone={readOnly ? "muted" : "ok"} />
             </div>
             <div className="model-policy-list model-policy-list--simple" aria-label="Agent 模型策略">
               {agentSkills.map((agent) => {
@@ -2229,7 +2233,7 @@ function SettingsView({
           <div className="settings-panel-head">
             <h2>自动化</h2>
           </div>
-          <SettingsField label="执行策略" status={{ label: readOnly ? "演示" : "已启用", tone: readOnly ? "muted" : "ok" }}>
+          <SettingsField label="执行策略" status={{ label: readOnly ? "只读" : "已启用", tone: readOnly ? "muted" : "ok" }}>
             <div className="settings-readonly-value">自动推进，失败停在对应环节</div>
           </SettingsField>
           <SettingsField label="质量门" status={{ label: "已启用", tone: "ok" }}>

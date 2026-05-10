@@ -36,7 +36,7 @@ if (existsSync("intro-site")) {
   assert(home.includes("assets/autodirector-intro-edge.mp4"), "homepage should point at the intro demo video")
   assert(!home.includes("Watch demo"), "homepage nav action should be localized")
   assert(home.includes("本地控制台可运行"), "homepage hero should expose product proof chips")
-  assert(home.includes("Quick Route"), "homepage should expose the fast product path")
+  assert(home.includes("最快审阅路径"), "homepage should expose the fast product path")
   assert(home.includes("交付包完整留痕"), "homepage should explain delivery traceability")
 
   const pipeline = readFileSync("intro-site/pipeline.html", "utf8")

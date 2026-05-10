@@ -4,40 +4,40 @@
 
 ## 1. Visual Theme & Atmosphere
 
-AutoDirector uses a Deep Logic Interface: dark, clinical, terminal-adjacent, and high-density. It should feel like an AI video production control room where a human operator supervises persistent Agents, artifacts, automation gates, runtime planning, rendering, and automated quality checks. The product surface is the app itself, not a landing page.
+AutoDirector uses an editorial control-room interface: dark, focused, terminal-adjacent, and moderately dense. It should feel like an AI video production room where a human operator supervises persistent Agents, artifacts, automation gates, runtime planning, rendering, and automated quality checks. The product surface is the app itself, not a landing page.
 
-The mood is precise, technical, and operational. Hierarchy comes from columns, borders, uppercase labels, and status color, not from giant hero typography or decorative cards.
+The mood is precise, technical, and operational, with warmer production-studio accents so the product does not feel like a generic cold dashboard. Hierarchy comes from columns, borders, compact labels, and status color, not from giant hero typography or decorative cards.
 
 ## 2. Color Palette & Roles
 
-- Near-black Control Canvas (`#121416`): global application background.
-- Docked Chrome Surface (`#16181A`): nav rail, inspector, and primary panels.
-- Low Container Surface (`#1A1C1E`): selected rows, input areas, runtime toggles, and console blocks.
-- Raised Container Surface (`#282A2C`): active control backgrounds and progress tracks.
-- Highest Container Surface (`#333537`): strong selected state, scrollbar thumb, subtle emphasis.
-- Structural Border (`#2D2F31`): all panel boundaries and row separators.
-- Muted Outline (`#3A494A`): secondary borders and inactive controls.
-- Primary Cyan (`#00F5FF`): selected navigation, primary buttons, active artifact, key system text.
-- Logic Lime (`#9DDF2E`): active Agents, passed quality gates, health indicators.
-- Soft Error Red (`#FFB4AB`): quality-gate risk, blocked tool calls, patch warnings.
-- Primary Text (`#E2E2E5`): readable foreground.
-- Muted Text (`#9BA1A6`): metadata, inactive labels, secondary body.
+- Deep Control Canvas (`#101619`): global application background.
+- Docked Surface (`rgba(25, 33, 36, 0.74)`): nav rail, inspector, and primary panels.
+- Low Container Surface (`rgba(255, 255, 255, 0.075)`): selected rows, input areas, runtime toggles, and console blocks.
+- Raised Container Surface (`rgba(255, 255, 255, 0.12)`): active control backgrounds and progress tracks.
+- Highest Container Surface (`rgba(255, 255, 255, 0.19)`): strong selected state, scrollbar thumb, subtle emphasis.
+- Structural Border (`rgba(255, 255, 255, 0.15)`): panel boundaries and row separators.
+- Muted Outline (`rgba(255, 255, 255, 0.24)`): secondary borders and inactive controls.
+- Primary Coral (`#ff6b6b`): primary actions, active system text, high-energy production accents.
+- Production Mint (`#4fd1b6`): active Agents, passed quality gates, health indicators.
+- Amber Cue (`#ffd166`): timing, media, and delivery proof accents.
+- Primary Text (`#f6faf8`): readable foreground.
+- Muted Text (`#a9b8b6`): metadata, inactive labels, secondary body.
 
 ## 3. Typography Rules
 
 - Interface text uses Inter for readable product UI.
-- System labels, data rows, console output, node IDs, and artifact names use Space Grotesk.
+- System labels, data rows, console output, node IDs, and artifact names use SFMono/Consolas-style monospace.
 - Labels are compact, uppercase, and usually 10-12px.
 - Headings stay restrained; this is an operator console, so no marketing-scale hero type.
 - Letter spacing is never negative; status labels may use small positive tracking for machine-like clarity.
 
 ## 4. Component Stylings
 
-* **Buttons:** Small, squared, and direct. Primary buttons are cyan filled with dark text; secondary buttons are transparent with a thin structural border. Icon plus text is preferred for actions.
-* **Panels:** Flat dark containers with 4-6px radius, one-pixel borders, and no decorative shadows.
+* **Buttons:** Small, direct, and action-led. Primary buttons use coral fill with dark text; secondary buttons are transparent with a thin structural border. Icon plus text is preferred for actions.
+* **Panels:** Dark containers with restrained 8-14px radius, one-pixel borders, and minimal shadow.
 * **Rows:** Dense 32-44px operator rows with hover tint and clear selected states.
-* **Badges:** Small uppercase or code-like labels with thin borders. Cyan means active/selected, lime means healthy/running, red means risk.
-* **Inputs:** Terminal-style dark fields with thin borders and focus rings in cyan.
+* **Badges:** Small uppercase or code-like labels with thin borders. Coral means active/selected, mint means healthy/running, red means risk, gray means read-only or optional.
+* **Inputs:** Terminal-style dark fields with thin borders and focus rings in coral/mint.
 * **Inspector:** Right-side panel with tabs for Agent Detail, Artifacts, Runtime, Quality, and Final. It must expose skill, inbox/outbox, memory, inputs, outputs, done criteria, and patch loop.
 * **Video Preview:** Dark framed media surface with native controls, progress track, and final package manifest adjacent to the player.
 
@@ -52,6 +52,6 @@ The mood is precise, technical, and operational. Hierarchy comes from columns, b
 ## Do Not Do
 
 - Do not pile every feature into one undifferentiated dashboard.
-- Do not use warm glassmorphism, purple AI gradients, oversized rounded cards, or marketing landing sections.
+- Do not use purple AI gradients, oversized rounded cards, or marketing landing sections inside the app.
 - Do not hide agent handoffs behind a single prompt result.
 - Do not show a final video without artifact history, citations, quality report, and package manifest.
