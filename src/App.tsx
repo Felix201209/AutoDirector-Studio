@@ -2045,11 +2045,32 @@ function SettingsView({
     }
     void onSettings({ modelPolicy: nextPolicy })
   }
+  const selectedModelProvider = settings.modelProvider ?? "codex_oauth"
+  const selectedVisualProvider = settings.visualProvider ?? "codex_imagegen"
+  const modelSourceStatus: SettingStatus = readOnly
+    ? { label: "演示", tone: "muted" }
+    : selectedModelProvider === "codex_oauth"
+      ? oauthConnected ? { label: "已配置", tone: "ok" } : { label: "未配置", tone: "warn" }
+      : selectedModelProvider === "custom_mcp"
+        ? { label: "需 MCP", tone: "warn" }
+        : { label: "需环境变量", tone: "warn" }
+  const visualSourceStatus: SettingStatus = readOnly
+    ? { label: "演示", tone: "muted" }
+    : selectedVisualProvider === "codex_imagegen"
+      ? capabilities?.codexNative?.imageGeneration ? { label: "已配置", tone: "ok" } : { label: "未启用", tone: "warn" }
+      : selectedVisualProvider === "openai_image_api"
+        ? { label: "需 Key", tone: "warn" }
+        : { label: "可用", tone: "ok" }
+  const agentHostStatus: SettingStatus = readOnly
+    ? { label: "演示", tone: "muted" }
+    : capabilities?.codexNative?.appServer
+      ? { label: "已配置", tone: "ok" }
+      : { label: "未配置", tone: "warn" }
   const nativeStatus = [
-    { label: "服务", value: capabilities?.codexNative?.appServer ? "可用" : "缺失" },
-    { label: "登录", value: capabilities?.codexNative?.loggedInWithChatGPT ? "已连接" : "未登录" },
-    { label: "图片", value: capabilities?.codexNative?.imageGeneration ? "启用" : "未启用" },
-    { label: "工具", value: capabilities?.codexNative?.toolSearch ? "启用" : "未启用" },
+    { label: "服务", value: capabilities?.codexNative?.appServer ? "可用" : "缺失", tone: capabilities?.codexNative?.appServer ? "ok" : "warn" },
+    { label: "登录", value: capabilities?.codexNative?.loggedInWithChatGPT ? "已连接" : "未登录", tone: capabilities?.codexNative?.loggedInWithChatGPT ? "ok" : "muted" },
+    { label: "图片", value: capabilities?.codexNative?.imageGeneration ? "启用" : "未启用", tone: capabilities?.codexNative?.imageGeneration ? "ok" : "warn" },
+    { label: "工具", value: capabilities?.codexNative?.toolSearch ? "启用" : "未启用", tone: capabilities?.codexNative?.toolSearch ? "ok" : "muted" },
   ]
 
   return (
@@ -2086,11 +2107,11 @@ function SettingsView({
             <h2>接入</h2>
             <div className="settings-status-chips" aria-label="本机能力状态">
               {nativeStatus.map((item) => (
-                <span key={item.label}>{item.label} {item.value}</span>
+                <SettingsStatus key={item.label} label={`${item.label} ${item.value}`} tone={item.tone as SettingStatus["tone"]} />
               ))}
             </div>
           </div>
-          <SettingsField label="Agent 承载">
+          <SettingsField label="Agent 承载" status={agentHostStatus}>
             <SegmentedOptions
               disabled={readOnly}
               options={agentHostOptions.map((option) => ({ value: option.id, label: option.name, title: option.detail }))}
@@ -2098,19 +2119,19 @@ function SettingsView({
               onChange={(value) => onSettings({ agentHost: value as AgentHost })}
             />
           </SettingsField>
-          <SettingsField label="模型来源">
+          <SettingsField label="模型来源" status={modelSourceStatus}>
             <SegmentedOptions
               disabled={readOnly}
               options={modelProviderOptions.map((option) => ({ value: option.id, label: modelProviderDisplayLabels[option.id], title: option.detail }))}
-              value={settings.modelProvider ?? "codex_oauth"}
+              value={selectedModelProvider}
               onChange={(value) => onSettings({ modelProvider: value as ModelProvider })}
             />
           </SettingsField>
-          <SettingsField label="素材来源">
+          <SettingsField label="素材来源" status={visualSourceStatus}>
             <SegmentedOptions
               disabled={readOnly}
               options={visualProviderOptions.map((option) => ({ value: option.id, label: option.name, title: option.detail }))}
-              value={settings.visualProvider ?? "codex_imagegen"}
+              value={selectedVisualProvider}
               onChange={(value) => onSettings({ visualProvider: value as VisualProvider })}
             />
           </SettingsField>
@@ -2120,7 +2141,7 @@ function SettingsView({
           <div className="settings-panel-head">
             <h2>模型</h2>
           </div>
-          <SettingsField label="图片模型">
+          <SettingsField label="图片模型" status={{ label: "已选择", tone: "ok" }}>
             <SegmentedOptions
               disabled={readOnly}
               options={imageModelOptions.map((model) => ({ value: model, label: model }))}
@@ -2129,7 +2150,10 @@ function SettingsView({
             />
           </SettingsField>
           <div className="settings-field settings-field--stack">
-            <div className="settings-field-label">Agent 模型</div>
+            <div className="settings-field-label">
+              <span>Agent 模型</span>
+              <SettingsStatus label={readOnly ? "演示" : "已配置"} tone={readOnly ? "muted" : "ok"} />
+            </div>
             <div className="model-policy-list model-policy-list--simple" aria-label="Agent 模型策略">
               {agentSkills.map((agent) => {
                 const policy = settings.modelPolicy?.[agent.id] ?? { model: "codex-default", thinkingLevel: "medium", thinkingLabel: "中", capabilities: [] }
@@ -2165,7 +2189,7 @@ function SettingsView({
           <div className="settings-panel-head">
             <h2>渲染</h2>
           </div>
-          <SettingsField label="视频运行时">
+          <SettingsField label="视频运行时" status={{ label: "已选择", tone: "ok" }}>
             <SegmentedOptions
               disabled={readOnly}
               options={[
@@ -2176,7 +2200,7 @@ function SettingsView({
               onChange={(value) => onSettings({ defaultRuntime: value as Exclude<RuntimeId, "auto"> })}
             />
           </SettingsField>
-          <SettingsField label="界面模式">
+          <SettingsField label="界面模式" status={{ label: "已选择", tone: "ok" }}>
             <SegmentedOptions
               disabled={readOnly}
               options={[
@@ -2193,10 +2217,10 @@ function SettingsView({
           <div className="settings-panel-head">
             <h2>自动化</h2>
           </div>
-          <SettingsField label="执行策略">
+          <SettingsField label="执行策略" status={{ label: readOnly ? "演示" : "已启用", tone: readOnly ? "muted" : "ok" }}>
             <div className="settings-readonly-value">自动推进，失败停在对应环节</div>
           </SettingsField>
-          <SettingsField label="质量门">
+          <SettingsField label="质量门" status={{ label: "已启用", tone: "ok" }}>
             <div className="settings-readonly-value">素材、渲染、质检必须通过</div>
           </SettingsField>
         </section>
@@ -2205,10 +2229,19 @@ function SettingsView({
   )
 }
 
-function SettingsField({ label, children }: { label: string; children: ReactNode }) {
+type SettingStatus = { label: string; tone: "ok" | "warn" | "muted" }
+
+function SettingsStatus({ label, tone }: SettingStatus) {
+  return <span className={`settings-status settings-status--${tone}`}>{label}</span>
+}
+
+function SettingsField({ label, status, children }: { label: string; status?: SettingStatus; children: ReactNode }) {
   return (
     <div className="settings-field">
-      <div className="settings-field-label">{label}</div>
+      <div className="settings-field-label">
+        <span>{label}</span>
+        {status ? <SettingsStatus {...status} /> : null}
+      </div>
       <div className="settings-field-control">{children}</div>
     </div>
   )
